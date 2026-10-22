@@ -33,6 +33,8 @@ from typing import Any
 import torch
 import torch.nn as nn
 
+from ..paths import HF_CACHE_DIR
+
 __all__ = ["TextEncoder", "TextTokenizer", "TEXT_ENCODER_DIM"]
 
 
@@ -78,7 +80,13 @@ class TextEncoder(nn.Module):
         self.max_length = max_length
         self.dtype = _parse_dtype(dtype)
 
-        self.encoder = T5EncoderModel.from_pretrained(model_name, torch_dtype=self.dtype)
+        # ``torch_dtype`` is deprecated in favour of ``dtype`` from
+        # transformers 4.56, but the project pins ``>=4.44,<5`` and the old
+        # name still works (with a warning) across that whole range, whereas
+        # ``dtype`` would crash on 4.44-4.55.
+        self.encoder = T5EncoderModel.from_pretrained(
+            model_name, torch_dtype=self.dtype, cache_dir=str(HF_CACHE_DIR / "hub")
+        )
         self.hidden_size = int(getattr(self.encoder.config, "d_model", TEXT_ENCODER_DIM))
 
         if freeze:
@@ -155,7 +163,9 @@ class TextTokenizer:
 
         self.model_name = model_name
         self.max_length = max_length
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name)
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, cache_dir=str(HF_CACHE_DIR / "hub")
+        )
         # mT5 does not have a pad token by default; it uses <extra_id_*>.
         if self.tokenizer.pad_token is None:
             self.tokenizer.pad_token = self.tokenizer.eos_token or "<pad>"

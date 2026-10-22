@@ -125,11 +125,12 @@ DEFAULTS: dict[str, Any] = {
     },
     "generate": {
         "max_new_tokens": 1024,
-        # Rough REMI token density at beat_res=4, moderate note density:
-        # ~16-20 tokens/sec around 120 BPM. Used by ``--duration`` to size
-        # max_new_tokens; the real duration is measured from the MIDI after
-        # generation, so this only needs to be close, not exact.
-        "tokens_per_second": 18.0,
+        # Measured REMI token density on the raga corpus: median ~12 tokens
+        # per second of music (sparse classical material; dense pop can reach
+        # ~20). Used by ``--duration`` to size max_new_tokens; the actual
+        # duration is measured from the MIDI afterwards, so this only has to
+        # be in the right ballpark.
+        "tokens_per_second": 12.0,
         "temperature": 1.0,
         "top_k": 50,
         "top_p": 0.95,

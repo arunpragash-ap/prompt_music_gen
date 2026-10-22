@@ -78,9 +78,16 @@ PROCESSED_DIR: Path = PROJECT_ROOT / "data" / "processed"
 OUTPUTS_DIR: Path = Path(os.environ.get("PROMPTMUSIC_OUTPUT", PROJECT_ROOT / "outputs")).resolve()
 
 # --- Hugging Face model cache ------------------------------------------------
+#: Where ``huggingface_hub`` keeps its downloads. Setting ``HF_HOME`` here
+#: (rather than passing ``cache_dir=`` to every ``from_pretrained`` call)
+#: means every Hugging Face download in the project - the mT5 encoder, the
+#: IndicTrans2 translation model, anything added later - lands in one known
+#: directory that the disk-cleanup guide can point at. A user who already has
+#: their own ``HF_HOME`` set keeps it (we never override an explicit choice).
 HF_CACHE_DIR: Path = Path(
     os.environ.get("PROMPTMUSIC_HF_CACHE", PROJECT_ROOT / ".hf_cache")
 ).resolve()
+os.environ.setdefault("HF_HOME", str(HF_CACHE_DIR))
 
 
 def ensure_dir(path: Path | str) -> Path:
