@@ -222,3 +222,51 @@ def test_gradient_flows_to_all_layers(tiny_decoder, seeded_music_ids):
     for layer in tiny_decoder.layers:
         grads = [p.grad for p in layer.parameters() if p.grad is not None]
         assert grads, "a decoder layer received no gradient"
+
+
+# --------------------------------------------------------------------------- #
+# Next-token sampling (build._sample)
+# --------------------------------------------------------------------------- #
+# Every path here crashed at least once with a real run: the top-p branch
+# called torch.multinomial(probs, num=1) - the kwarg is num_samples - and
+# nothing caught it because the tests only ever exercised the greedy path.
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"temperature": 0.0},                  # greedy argmax
+        {"temperature": 1.0},                  # plain multinomial
+        {"temperature": 0.8, "top_k": 5},      # top-k truncation
+        {"temperature": 0.9, "top_p": 0.9},    # nucleus sampling
+        {"temperature": 1.0, "top_p": 0.95, "top_k": 20},
+        {"num_beams": 3},                      # greedy beam head
+    ],
+)
+def test_sample_returns_one_token_per_row(kwargs):
+    from promptmusic.model.build import _sample
+
+    torch.manual_seed(0)
+    logits = torch.randn(2, 50)
+    out = _sample(logits, **kwargs)
+    assert out.shape == (2, 1)
+    assert out.dtype == torch.long
+    # The chosen id must be a real column of the input.
+    assert ((out >= 0) & (out < logits.size(-1))).all()
+
+
+def test_sample_greedy_picks_argmax():
+    from promptmusic.model.build import _sample
+
+    logits = torch.tensor([[0.1, 5.0, 0.2]])
+    assert _sample(logits, temperature=0.0).item() == 1
+
+
+def test_sample_top_p_only_keeps_nucleus_tokens():
+    """With a tiny nucleus, sampling must pick from the top tokens only."""
+    from promptmusic.model.build import _sample
+
+    logits = torch.full((1, 10), -10.0)
+    logits[0, 3] = 10.0
+    logits[0, 7] = 9.0
+    torch.manual_seed(0)
+    for _ in range(20):
+        assert _sample(logits, temperature=1.0, top_p=0.5).item() in (3, 7)

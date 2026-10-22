@@ -233,11 +233,11 @@ def _sample(
         remove = cum - probs > top_p
         sorted_logits = sorted_logits.masked_fill(remove, float("-inf"))
         probs = F.softmax(sorted_logits, dim=-1)
-        choice = torch.multinomial(probs, num=1)
+        choice = torch.multinomial(probs, num_samples=1)
         return sorted_idx.gather(-1, choice)
 
     probs = F.softmax(logits, dim=-1)
-    return torch.multinomial(probs, num=1)
+    return torch.multinomial(probs, num_samples=1)
 
 
 # --------------------------------------------------------------------------- #
