@@ -41,6 +41,7 @@ import json
 import sys
 import time
 import traceback
+from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Callable
 
@@ -501,6 +502,47 @@ def cmd_render(args: argparse.Namespace) -> int:
     return 0 if failed == 0 else 1
 
 
+def cmd_vocals(args: argparse.Namespace) -> int:
+    """Speak the lyrics and mix them under a rendered instrumental.
+
+    The music model emits MIDI, which has no voice track - until this
+    stage exists, ``generate --lyrics ...`` only *conditions* the music
+    on the text. See ``promptmusic.vocals`` for what this can and cannot
+    do (it is a vocal layer, not melody-matched singing).
+    """
+    from .vocals import DEFAULT_VOICE, add_vocals
+
+    midi = Path(args.midi)
+    wav = Path(args.wav)
+    for p in (midi, wav):
+        if not p.exists():
+            print(f"not found: {p}", file=sys.stderr)
+            return 2
+    if not args.lyrics and not args.lyrics_file:
+        print("pass --lyrics or --lyrics-file (nothing to sing)", file=sys.stderr)
+        return 2
+
+    try:
+        result = add_vocals(
+            midi, wav,
+            lyrics=args.lyrics,
+            lyrics_file=args.lyrics_file,
+            out_path=args.out,
+            voice=args.voice or DEFAULT_VOICE,
+            device=args.device,
+            stride_bars=args.stride_bars,
+            vocal_gain_db=args.gain,
+        )
+    except Exception as exc:
+        print(f"vocals failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print(asdict(result), args.json, title="vocal mix")
+    for w in result.warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    return 0
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     """Phase 4: describe a reference MIDI or audio file."""
     from .analyze import (
@@ -863,6 +905,32 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--backends", action="store_true", help="list backends and exit")
     _add_common(p)
     p.set_defaults(func=cmd_render)
+
+    # --- vocals ----------------------------------------------------------- #
+    p = sub.add_parser(
+        "vocals",
+        help="speak the lyrics and mix them under a rendered instrumental",
+        description=(
+            "The music model emits MIDI, which has no voice track. This stage "
+            "speaks each lyric line with a local TTS model, aligns the lines "
+            "to the MIDI's bars, and mixes them under the instrumental WAV. "
+            "A vocal layer - not melody-matched singing (see docs/07)."
+        ),
+    )
+    p.add_argument("--midi", required=True, help="the generated .mid (for tempo/bar timing)")
+    p.add_argument("--wav", required=True, help="the rendered instrumental .wav")
+    p.add_argument("--out", help="output path (default: <wav>_vocal.wav)")
+    p.add_argument("--lyrics", help="lyric text (English or Tamil)")
+    p.add_argument("--lyrics-file", help="UTF-8 file with one lyric line per line")
+    p.add_argument("--voice", help="transformers VITS TTS repo id (default: Tamil MMS)")
+    p.add_argument("--stride-bars", type=int,
+                   help="bars between lyric lines (default: spread evenly)")
+    p.add_argument("--gain", type=float, default=-4.0,
+                   help="vocal level in dB relative to the music (default -4)")
+    p.add_argument("--device", default="cpu",
+                   help="speech model device (cpu or mps; default cpu)")
+    _add_common(p)
+    p.set_defaults(func=cmd_vocals)
 
     # --- analyze ---------------------------------------------------------- #
     p = sub.add_parser(

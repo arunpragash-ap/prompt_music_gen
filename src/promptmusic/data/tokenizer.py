@@ -485,12 +485,30 @@ class MusicTokenizer:
         return backend.decode(music_ids)
 
     def save_midi(self, ids: list[int], path: Path | str) -> Path:
-        """Decode ids and write a ``.mid`` file."""
+        """Decode ids and write a ``.mid`` file.
+
+        Also sanitises the tempo: an undertrained model can emit an
+        out-of-range ``Tempo`` token, and miditok decodes a 0 QPM event
+        literally - symusic then reports ``score.end() == 0`` (no duration),
+        which breaks rendering, evaluation and bar-aligned vocal mixing.
+        Invalid tempos are replaced by the midpoint of the configured range.
+        """
         p = Path(path)
         p.parent.mkdir(parents=True, exist_ok=True)
         score = self.decode_ids(ids)
+        self._sanitize_tempos(score)
         score.dump_midi(str(p))
         return p
+
+    def _sanitize_tempos(self, score: Any) -> None:
+        """Replace zero/negative/out-of-range tempo events in-place."""
+        tempo_range = tuple(self.config.get("tempo_range") or (40, 250))
+        lo, hi = float(tempo_range[0]), float(tempo_range[1])
+        fallback = (lo + hi) / 2.0
+        for tempo in getattr(score, "tempos", []):
+            qpm = float(tempo.qpm)
+            if not (lo <= qpm <= hi):
+                tempo.qpm = fallback
 
     # -- lyrics ------------------------------------------------------------ #
     def _bar_positions(self, ids: list[int]) -> list[int]:
