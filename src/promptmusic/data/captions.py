@@ -84,6 +84,17 @@ class CaptionRecord:
         kwargs = {k: v for k, v in d.items() if k in known}
         kwargs.setdefault("extras", {})
         kwargs["extras"].update(extras)
+        # MidiCaps stores genre/mood as *lists* of labels ordered by
+        # confidence, but the dataclass types them as str. Keep the highest
+        # confidence label as the primary value and preserve the full list in
+        # extras (build_prompt_from_features joins str fields, so a raw list
+        # would crash with "expected str instance, list found").
+        for list_field in ("genre", "mood"):
+            value = kwargs.get(list_field)
+            if isinstance(value, list):
+                clean = [str(v) for v in value if v]
+                kwargs[list_field] = clean[0] if clean else ""
+                kwargs["extras"][f"{list_field}_all"] = clean
         return cls(**kwargs)
 
     def style_prompt(self) -> str:
@@ -111,25 +122,59 @@ class CaptionRecord:
 
 
 def _strip_mid_path(location: str) -> str:
-    """Turn ``MID_PATH/a/b/c.mid`` into ``a/b/c.mid``."""
+    """Turn ``MID_PATH/a/b/c.mid`` into ``a/b/c.mid``.
+
+    MidiCaps ``train.json`` uses ``lmd_full/<shard>/<hash>.mid`` locations,
+    but the archive extracts the shard directories directly under the MIDI
+    root, so that prefix must go too. Without this the resolver falls back to
+    a recursive search over ~168 k files for every record.
+    """
     loc = location.replace("\\", "/")
-    for prefix in ("MID_PATH/", "midicaps/", "MIDI/"):
+    for prefix in ("MID_PATH/", "midicaps/", "MIDI/", "lmd_full/"):
         if loc.startswith(prefix):
             return loc[len(prefix) :]
     return loc
 
 
 def iter_captions(path: Path | str, limit: int | None = None) -> Iterator[CaptionRecord]:
-    """Stream caption records out of a MidiCaps-style JSON file.
+    """Stream caption records out of a MidiCaps-style file.
 
-    Uses :mod:`ijson` when available (constant memory) and falls back to
-    :func:`json.load` otherwise.
+    Handles both shapes found in the wild:
+
+    * a **JSON array** ``[{...}, {...}]`` - streamed with :mod:`ijson`
+      (constant memory);
+    * **JSON Lines** (one object per line) - which is what the official
+      MidiCaps ``train.json`` actually is. Detecting this matters: parsing a
+      JSONL file as an array raises ``IncompleteJSONError: trailing garbage``
+      on the second line.
+
+    Falls back to :func:`json.load` when :mod:`ijson` is missing (uses more
+    RAM).
     """
     p = Path(path)
     if not p.exists():
         raise FileNotFoundError(f"caption file not found: {p}")
 
     count = 0
+    # Sniff the first non-whitespace byte: '{' means JSONL, '[' means array.
+    with open(p, "rb") as fh:
+        first = fh.read(1)
+        while first in (b" ", b"\t", b"\n", b"\r"):
+            first = fh.read(1)
+
+    if first == b"{":
+        # JSON Lines: every line is a self-contained object.
+        with open(p, encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                yield CaptionRecord.from_dict(json.loads(line))
+                count += 1
+                if limit and count >= limit:
+                    return
+        return
+
     try:
         import ijson
 
