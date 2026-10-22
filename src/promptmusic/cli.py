@@ -79,7 +79,18 @@ def _print(data: Any, as_json: bool, *, title: str | None = None) -> None:
                 print(f"{key:<24}: {value}")
     elif isinstance(data, list):
         for item in data:
-            print(f"  - {item}")
+            # A list of dicts (e.g. render/evaluate summaries) reads far
+            # better as aligned key: value lines than as a raw repr.
+            if isinstance(item, dict):
+                for k, v in item.items():
+                    if isinstance(v, (dict, list)) and len(str(v)) > 120:
+                        print(f"  {k:<22}:")
+                        print(f"    {json.dumps(v, ensure_ascii=False, default=str)[:400]}")
+                    else:
+                        print(f"  {k:<22}: {v}")
+                print()
+            else:
+                print(f"  - {item}")
     else:
         print(data)
     if title:
