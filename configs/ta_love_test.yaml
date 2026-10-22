@@ -12,15 +12,17 @@
 # Sequence-length maths (measured, not guessed):
 #   MidiCaps love-song subset tokenises at a median ~40 tokens/second.
 #   60 s x 40 tok/s = ~2400 tokens, so the decoder's positional table must
-#   cover at least that: max_len 2560. Training truncates at 2048 (memory),
-#   which leaves positions 2048-2560 unseen - sinusoidal encodings
-#   extrapolate there, fine for a pipeline test.
+#   cover at least that: max_len 2560. Training truncates at 1024 - on this
+#   8 GB machine, 2048-token training thrashed swap (~60 s/step, measured;
+#   the process was killed). Positions 1024-2560 are unseen during training;
+#   sinusoidal encodings extrapolate there, which is acceptable for a
+#   pipeline test but a real run should train at the full generation length.
 #
-# Memory maths (Apple M2, 8 GB unified):
+# Memory maths (Apple M2, 8 GB unified, measured):
 #   attention ~ batch x layers x heads x T^2 x 4 B
-#            = 1 x 12 x 8 x 2048^2 x 4      ~ 1.6 GB (fp32, forward)
-#   + frozen mT5 (~1.1 GB) + decoder weights (~0.25 GB) + optimiser states
-#   -> batch 1 with grad_accum 2 (effective batch 2).
+#            = 1 x 12 x 8 x 1024^2 x 4      ~ 0.4 GB (fp32, forward)
+#   ~3x with backward + frozen mT5 (~1.1 GB) + decoder (~0.25 GB)
+#   + Adam states (~0.4 GB)  -> fits without swap; 2048 did not.
 # ---------------------------------------------------------------------------
 
 project:
@@ -40,7 +42,7 @@ data:
   cache_file: data/processed/love_en_400.jsonl
 
 tokenizer:
-  max_tokens: 2048            # long enough for ~50 s of dense love-song MIDI
+  max_tokens: 1024            # 2048 thrashed 8 GB swap (see header); ~25 s of MIDI
 
 model:
   decoder:
