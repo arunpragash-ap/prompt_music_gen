@@ -125,12 +125,14 @@ DEFAULTS: dict[str, Any] = {
     },
     "generate": {
         "max_new_tokens": 1024,
-        # Measured REMI token density on the raga corpus: median ~12 tokens
-        # per second of music (sparse classical material; dense pop can reach
-        # ~20). Used by ``--duration`` to size max_new_tokens; the actual
-        # duration is measured from the MIDI afterwards, so this only has to
-        # be in the right ballpark.
-        "tokens_per_second": 12.0,
+        # Measured REMI token density (tokenize 20 real files per corpus):
+        #   raga corpus (solo classical)      ~12 tok/s
+        #   MidiCaps love-song subset (slow)  ~40 tok/s median
+        #   MidiCaps overall (dense multi-track pop) ~60 tok/s median
+        # Used by --duration to size max_new_tokens; the actual duration is
+        # measured from the MIDI afterwards, so this only needs to be in the
+        # right ballpark. Override per run with -o generate.tokens_per_second.
+        "tokens_per_second": 40.0,
         "temperature": 1.0,
         "top_k": 50,
         "top_p": 0.95,

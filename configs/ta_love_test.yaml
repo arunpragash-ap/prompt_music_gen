@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# ta_love_test.yaml - end-to-end Tamil love-song pipeline test (~60 s audio)
+# ---------------------------------------------------------------------------
+# Purpose: prove the WHOLE path works on real data - MidiCaps love-song
+# subset -> train -> Tamil prompt + Tamil lyrics -> MIDI -> fluidsynth WAV.
+#
+# The model is deliberately undertrained (a few hundred steps). This config
+# verifies the machinery and the Tamil/mT5 conditioning path; it does NOT
+# produce release-quality music. A full run trains on all 168 k pieces for
+# several epochs (see configs/default.yaml).
+#
+# Sequence-length maths (measured, not guessed):
+#   MidiCaps love-song subset tokenises at a median ~40 tokens/second.
+#   60 s x 40 tok/s = ~2400 tokens, so the decoder's positional table must
+#   cover at least that: max_len 2560. Training truncates at 2048 (memory),
+#   which leaves positions 2048-2560 unseen - sinusoidal encodings
+#   extrapolate there, fine for a pipeline test.
+#
+# Memory maths (Apple M2, 8 GB unified):
+#   attention ~ batch x layers x heads x T^2 x 4 B
+#            = 1 x 12 x 8 x 2048^2 x 4      ~ 1.6 GB (fp32, forward)
+#   + frozen mT5 (~1.1 GB) + decoder weights (~0.25 GB) + optimiser states
+#   -> batch 1 with grad_accum 2 (effective batch 2).
+# ---------------------------------------------------------------------------
+
+project:
+  name: prompt_music_gen      # same run dir, so generate finds the checkpoint
+  seed: 42
+
+data:
+  limit: 400                  # 300 romantic + 100 general MidiCaps pieces
+  val_fraction: 0.1
+  languages: [en]             # captions are English; Tamil enters via lyrics
+  # love_subset.jsonl was filtered from train.json for love/romantic/ballad
+  # captions plus a slice of general material. An absolute path bypasses the
+  # normal caption-file search (pathlib: dir / /abs == /abs).
+  caption_file: /Users/arunpragash/grootan/learning/prompt_music_gen/data/processed/love_subset.jsonl
+  # Reuse the tokenised cache written by `promptmusic tokenize --cache ...`
+  # instead of re-tokenising 400 MIDI files on every train run.
+  cache_file: data/processed/love_en_400.jsonl
+
+tokenizer:
+  max_tokens: 2048            # long enough for ~50 s of dense love-song MIDI
+
+model:
+  decoder:
+    max_len: 2560             # positional table covers a 60 s generation
+
+train:
+  epochs: 1
+  batch_size: 1
+  grad_accum: 2               # effective batch 2, fits 8 GB
+  lr: 3.0e-4
+  num_workers: 0              # MPS + forked loaders = trouble; keep it simple
+  max_steps: 200
+  log_every: 10
+  val_every: 50
+  save_every: 100
+  device: auto
+  amp: false                  # fp32: MPS amp is flaky for this model size
+
+generate:
+  max_new_tokens: 2400        # ~60 s at the measured 40 tok/s
+  temperature: 1.0
+  top_k: 50
+  top_p: 0.95
+  seed: 123
+
+render:
+  sample_rate: 44100          # full rate for the deliverable WAV

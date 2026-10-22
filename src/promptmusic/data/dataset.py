@@ -222,6 +222,16 @@ def load_tokenized_dataset(path: Path | str) -> list[TokenizedExample]:
 
 
 def _default_cache_path(cfg: Any, language: str, limit: int | None) -> Path:
+    # An explicit cache file (set by `tokenize --cache` or in the config)
+    # wins: train() calls this without a cache_path, and it must find the
+    # same file tokenize wrote or it would silently re-tokenise 400 MIDI
+    # files (minutes of work) for nothing.
+    explicit = cfg.get("data.cache_file")
+    if explicit:
+        p = Path(explicit)
+        if not p.is_absolute():
+            p = Path.cwd() / p
+        return p
     root = Path(cfg.get("paths.processed_dir", PROCESSED_DIR))
     tag = f"{language}_{limit if limit else 'all'}"
     return root / f"examples_{tag}.jsonl"
