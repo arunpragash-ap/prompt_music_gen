@@ -1,0 +1,65 @@
+# ---------------------------------------------------------------------------
+# smoke.yaml - prove the whole pipeline works, in minutes not hours
+# ---------------------------------------------------------------------------
+# Use this first, before spending time on a real run:
+#
+#     promptmusic download --source midicaps
+#     promptmusic tokenize   --config smoke
+#     promptmusic train      --config smoke
+#     promptmusic generate   --config smoke --prompt "a calm piano melody"
+#     promptmusic evaluate   outputs/prompt_music_gen/samples
+#
+# It changes nothing about the architecture - it just shrinks the data, the
+# step count and the sequence lengths so that every stage completes quickly
+# and you can see the end-to-end path before committing to a long training
+# run. Checkpoints from this config are NOT useful music; they exist to prove
+# the machinery (save -> resume -> generate -> render -> evaluate) works.
+#
+# Expected wall time on an Apple M2 (8 GB):
+#   tokenize  ~1 min for 200 examples
+#   train     ~3-5 min (60 steps, batch 2, 256 tokens)
+#   generate  ~30 s per sample
+# ---------------------------------------------------------------------------
+
+project:
+  name: prompt_music_gen      # same run dir as default, so checkpoints are found
+  seed: 42
+
+data:
+  limit: 200                  # tiny slice of MidiCaps
+  val_fraction: 0.1
+  # The raga corpus doubles as cheap, always-available smoke data: run
+  # `promptmusic raga-build --config smoke` to create it without a download.
+  languages: [en]
+
+tokenizer:
+  max_tokens: 512             # short sequences keep the memory footprint tiny
+
+model:
+  decoder:
+    max_len: 1024
+
+train:
+  epochs: 1
+  batch_size: 2
+  grad_accum: 1
+  lr: 3.0e-4
+  num_workers: 0
+  max_steps: 60               # stop after 60 optimizer steps no matter what
+  log_every: 10
+  val_every: 30
+  save_every: 30
+  device: auto
+
+generate:
+  max_new_tokens: 192         # a few seconds of music
+  temperature: 1.0
+  seed: 123
+
+render:
+  sample_rate: 22050          # half rate = half the file, faster to render
+
+raga:
+  enabled: true
+  variations_per_raga: 2      # 24 ragas x 2 = 48 files, a few seconds
+  seed: 7

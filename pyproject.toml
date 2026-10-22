@@ -1,0 +1,87 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "promptmusic"
+version = "0.1.0"
+description = "Text-prompt (English + Tamil) conditioned music generation with a multilingual text encoder, REMI-token transformer decoder, lyric tokens, reference conditioning and Hindustani raga support."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "Apache-2.0" }
+authors = [{ name = "prompt_music_gen contributors" }]
+keywords = ["music", "text-to-music", "midi", "remi", "tamil", "hindustani", "raga"]
+
+# Core runtime. Deliberately minimal so it installs on a laptop.
+dependencies = [
+    "torch>=2.4",
+    # Pinned below 5 because transformers 5.x changed several tokenizer and
+    # generation APIs this code relies on; 4.44-4.57 are verified working.
+    "transformers>=4.44,<5",
+    "huggingface_hub>=0.24",
+    "safetensors>=0.4",
+    "miditok>=3.0",
+    "mido>=1.3",
+    "pretty_midi>=0.2.10",
+    "numpy>=1.26",
+    "tqdm>=4.66",
+    "pyyaml>=6.0",
+    "matplotlib>=3.8",
+    "soundfile>=0.12",
+    "ijson>=3.2",
+    "scipy>=1.11",
+    "einops>=0.7",
+]
+
+[project.optional-dependencies]
+# Higher-quality audio analysis of reference files (tempo / key / energy).
+analysis = ["librosa>=0.10", "soundfile>=0.12"]
+# Pure-python SoundFont rendering fallback (no system fluidsynth needed).
+render = ["sf2utils>=1.0"]
+# Convenient process-pooled rendering via the fluidsynth CLI.
+fluidsynth = ["pyfluidsynth>=1.4"]
+# TensorBoard training curves.
+logging = ["tensorboard>=2.16"]
+dev = ["pytest>=8.0", "pytest-timeout>=2.3", "ruff>=0.6"]
+# Everything a Mac user wants.
+mac = ["librosa>=0.10", "sf2utils>=1.0", "tensorboard>=2.16", "pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+promptmusic = "promptmusic.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/YOUR_USERNAME/prompt_music_gen"
+Documentation = "https://github.com/YOUR_USERNAME/prompt_music_gen/tree/main/docs"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+promptmusic = ["py.typed"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "network: requires network access (deselect with '-m \"not network\"')",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+    "ignore::UserWarning",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+ignore = ["E501", "B008", "B905"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B011"]

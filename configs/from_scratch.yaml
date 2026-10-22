@@ -1,0 +1,70 @@
+# ---------------------------------------------------------------------------
+# from_scratch.yaml - train on the FULL dataset with no released weights
+# ---------------------------------------------------------------------------
+# This is the "real" training configuration: all 168k MidiCaps examples, more
+# epochs, and the model trained entirely from random initialisation (which is
+# what this project does by default - it never touches the ACE-Step models).
+#
+#     promptmusic download --source midicaps   # the full ~1.6 GB archive
+#     promptmusic tokenize  --config from_scratch
+#     promptmusic train     --config from_scratch
+#
+# Honest expectations on an Apple M2 / 8 GB:
+#   * tokenize 168k MIDI files: 2-4 hours (one time; the cache makes every
+#     later run instant)
+#   * each epoch: ~6-8 hours at batch 8 / 1024 tokens
+#   * 3 epochs: roughly a day and a half of training
+#
+# If that is more than you want to spend right now, start with `default`
+# (20k examples, ~1 h for 3 epochs) and come back to this. The architecture
+# is identical between the two - only data volume and step counts differ.
+#
+# Memory: this config raises batch_size and keeps num_workers at 0. If the
+# process is killed by macOS (memory pressure), lower train.batch_size to 4
+# and set train.grad_accum to 2 to keep the same effective batch.
+# ---------------------------------------------------------------------------
+
+project:
+  name: prompt_music_gen_full
+  seed: 42
+  deterministic: false
+
+data:
+  limit: null                 # null = every example in the caption index
+  val_fraction: 0.02          # 2% of 168k is still ~3300 validation files
+  languages: [en]
+  use_tamil_for_training: false   # set true once `promptmusic translate` has run
+
+tokenizer:
+  max_tokens: 2048            # most pieces are well under this; keeps RAM sane
+
+model:
+  decoder:
+    max_len: 4096
+
+train:
+  epochs: 3
+  batch_size: 8
+  grad_accum: 2               # effective batch 16 without extra peak memory
+  lr: 2.0e-4                  # slightly lower LR for a longer run
+  weight_decay: 0.01
+  warmup_ratio: 0.03
+  min_lr_ratio: 0.05
+  max_grad_norm: 1.0
+  num_workers: 0
+  log_every: 100
+  val_every: 2000
+  save_every: 2000
+  max_steps: null
+  device: auto
+
+generate:
+  max_new_tokens: 1024
+  temperature: 1.0
+  top_k: 50
+  top_p: 0.95
+  repetition_penalty: 1.05
+
+# Rebalancing (Phase 6) matters most at full scale, where the raw Lakh/MidiCaps
+# instrument skew is most visible in the output.
+# Run first:  promptmusic audit --root dataset/midicaps --weights

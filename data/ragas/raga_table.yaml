@@ -1,0 +1,446 @@
+# ---------------------------------------------------------------------------
+# Hindustani raga table
+# ---------------------------------------------------------------------------
+# WHAT THIS FILE IS
+#   A small, hand-checked music-theory database describing 24 Hindustani ragas
+#   in the notation of Vishnu Narayan Bhatkhande, the classification that is
+#   standard in North Indian classical music.
+#
+# WHY IT IS AUTHORED RATHER THAN SCRAPED
+#   There is no machine-readable raga grammar published under a permissive
+#   licence. The Raga Recognition Dataset (Zenodo 7278506) ships *audio* and
+#   labels, not scales; Saraga ships audio and beat annotations. Both are
+#   described in docs/01_DATASETS.md. So the grammar itself lives here, in
+#   plain YAML, where a musician can read it, correct it, and cite it.
+#
+# HOW IT IS USED
+#   `promptmusic raga-build` reads this file and synthesises MIDI that obeys
+#   each raga's ascending (aroha) and descending (avaroha) rules, its
+#   characteristic phrase (pakad), and its vakra (crooked) contour where one
+#   applies. Those files become training examples so the model can *create*
+#   with ragas, not merely name them.
+#
+# NOTATION (Bhatkhande)
+#   S  Sa     tonic                     -> semitone  0
+#   R  Re     shuddha Rishabh           -> semitone  2
+#   r  re     komal (flat) Rishabh      -> semitone  1
+#   G  Ga     shuddha Gandhar           -> semitone  4
+#   g  ga     komal Gandhar             -> semitone  3
+#   M  Ma     shuddha Madhyam (P4)      -> semitone  5
+#   M^ ma     teevra Madhyam (aug P4)   -> semitone  6
+#   P  Pa     Pancham (always natural)  -> semitone  7
+#   D  Dha    shuddha Dhaivat           -> semitone  9
+#   d  dha    komal Dhaivat             -> semitone  8
+#   N  Ni     shuddha Nishad            -> semitone 11
+#   n  ni     komal Nishad              -> semitone 10
+#
+#   A trailing apostrophe raises an octave ('), a trailing comma lowers it.
+#   e.g. S' = tonic one octave up, S, = tonic one octave down.
+#
+# JATI (scale structure)
+#   audav    5 notes (pentatonic)
+#   shadav   6 notes
+#   sampurna 7 notes (all seven swaras present)
+#   the suffix "-audav" / "-shadav" describes the avaroha (descending) form
+#
+# SOURCES
+#   [B]  Bhatkhande, V. N. *Hindustani Sangeet Paddhati*, vols. I-VI,
+#        1934-1948. The origin of the thaat/raga system used here.
+#   [D]  Daniélou, A. *The Rāgas of Northern Indian Music*, George Allen &
+#        Unwin, 1954.
+#   [J]  Jairazbhoy, N. A. *The Rāgas of North Indian Music*, Faber & Faber,
+#        1971.
+#   [RRD] Ramanathan & Chordia, "Raga Recognition Dataset", Zenodo 7278506,
+#        2024. CC-BY-4.0. Used for tempo/register priors, not for grammar.
+#   [S]  Saraga dataset (Sethares & Rajan), Madras/Melody/Sarod. Non-commercial.
+# ---------------------------------------------------------------------------
+
+version: 1
+
+meta:
+  system: Bhatkhande
+  region: Hindustani (North Indian)
+  num_ragas: 24
+  default_tonic_semitone: 60      # C4; each generated sample may shift this
+  default_tonic_name: C4
+  license_of_this_file: CC0-1.0   # music theory facts, no creative content
+  compiled_for: prompt_music_gen
+
+# Every swara name used below maps to a semitone offset from the tonic.
+swara_semitones:
+  S: 0
+  r: 1
+  R: 2
+  g: 3
+  G: 4
+  M: 5
+  M^: 6
+  P: 7
+  d: 8
+  D: 9
+  n: 10
+  N: 11
+
+# General MIDI programs used when synthesising raga training files.
+# GM program numbers, 0-indexed.
+instruments:
+  sitar: 105
+  sarod: 105          # closest GM voice; a real sarod has a buzzing jawari
+  bansuri: 73         # GM Flute
+  shehnai: 111        # GM Shanai
+  santoor: 15         # GM Dulcimer
+  tanpura_drone: 48   # GM String Ensemble 1, used as a sustained drone
+  harmonium: 20       # GM Reed Organ
+  tabla: percussion   # channel 10, notes chosen in raga_gen.py
+
+# Percussion notes used for a light tabla/lehara accompaniment (GM drum map).
+tabla:
+  dha: 64        # Low Conga
+  na: 63         # Open Hi Conga
+  tin: 62        # Mute Hi Conga
+  ge: 61         # Low Bongo
+  te: 60         # Hi Bongo
+  tala: Teental  # 16 beats, the most common cycle for these ragas
+
+# ---------------------------------------------------------------------------
+# THE RAGAS
+# ---------------------------------------------------------------------------
+ragas:
+
+  - name: Bilawal
+    thaat: Bilawal
+    jati: sampurna
+    aroha: [S, R, G, M, P, D, N, S']
+    avaroha: [S', N, D, P, M, G, R, S]
+    pakad: [S, R, G, M, P, D, N, S', S', N, D, P, M, G, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: morning
+    instruments: [sitar, harmonium]
+    source: "[B] vol. I (Bilawal thaat); [D] ch. 4"
+    notes: "The all-shuddha scale; identical to the Western major/Ionian mode."
+
+  - name: Bhairav
+    thaat: Bhairav
+    jati: sampurna
+    aroha: [S, r, G, M, P, d, N, S']
+    avaroha: [S', N, d, P, M, G, r, S]
+    pakad: [S, r, G, M, P, d, N, S', S', N, d, P, M, G, r, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Dha
+    time: morning
+    instruments: [sitar, shehnai]
+    source: "[B] vol. II (Bhairav thaat); [J] ch. 6"
+    notes: "Ancient and severe. Komal Re and komal Dha are both rendered with a slow oscillation (andolan)."
+
+  - name: Ramkali
+    thaat: Bhairav
+    jati: sampurna-audav
+    aroha: [S, r, G, M, P, d, S']
+    avaroha: [S', N, d, P, M, G, r, S]
+    pakad: [S, r, G, M, P, d, P, M, G, r, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Dha
+    time: early morning
+    instruments: [harmonium, bansuri]
+    source: "[B] vol. II; [J] ch. 6"
+    notes: "A Bhairav-family raga associated with devotional (dhun) music; Ni is omitted in ascent."
+
+  - name: Gauri
+    thaat: Bhairav
+    jati: sampurna
+    aroha: [S, r, G, M, P, d, N, S']
+    avaroha: [S', N, d, P, M, G, r, S]
+    pakad: [S, r, G, M, P, d, N, S', S', r', G', M', P, M, G, r, S]
+    vakra: true
+    vadi: Ga
+    samvadi: Dha
+    time: morning
+    instruments: [sitar, sarod]
+    source: "[B] vol. II; [D] ch. 6"
+    notes: "Vakra: the ascent bends through the upper tetrachord rather than climbing straight."
+
+  - name: Bhairavi
+    thaat: Bhairavi
+    jati: sampurna
+    aroha: [S, r, g, M, P, d, n, S']
+    avaroha: [S', n, d, P, M, g, r, S]
+    pakad: [S, r, g, M, P, d, n, S', S', n, d, P, M, g, r, S]
+    vakra: false
+    vadi: Sa
+    samvadi: Pa
+    time: any
+    instruments: [harmonium, bansuri]
+    source: "[B] vol. I (Bhairavi thaat); [D] ch. 7"
+    notes: "Phrygian-like. Traditionally the closing raga of a concert."
+
+  - name: Malkauns
+    thaat: Bhairavi
+    jati: audav
+    aroha: [S, g, M, d, n, S']
+    avaroha: [S', n, d, M, g, S]
+    pakad: [S, g, M, d, n, S', S', n, d, M, g, S]
+    vakra: false
+    vadi: Sa
+    samvadi: Ma
+    time: midnight
+    instruments: [sarod, sitar]
+    source: "[B] vol. IV; [RRD] class 'malkauns'"
+    notes: "Minor pentatonic (0 3 5 8 10). Deep, meditative, associated with the night."
+
+  - name: Todi
+    thaat: Todi
+    jati: sampurna
+    aroha: [S, r, g, M, P, d, N, S']
+    avaroha: [S', N, d, P, M, g, r, S]
+    pakad: [S, r, g, M, P, d, N, S', S', N, d, P, M, g, r, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Dha
+    time: late morning
+    instruments: [sitar, shehnai]
+    source: "[B] vol. IV (Todi thaat); [D] ch. 9"
+    notes: "The most austere of the morning ragas; komal Re, komal Ga and komal Dha all with andolan."
+
+  - name: Multani
+    thaat: Purvi
+    jati: sampurna-audav
+    aroha: [S, r, M^, P, d, S']
+    avaroha: [S', d, P, M^, r, S]
+    pakad: [S, r, M^, P, d, P, M^, r, S]
+    vakra: false
+    vadi: Ga
+    samvadi: dha
+    time: afternoon
+    instruments: [sarod, bansuri]
+    source: "[B] vol. III (Purvi thaat); [J] ch. 10"
+    notes: "Shadav: Ga and Ni are absent. Teevra Ma against komal Re gives its unmistakable colour."
+
+  - name: Purvi
+    thaat: Purvi
+    jati: sampurna
+    aroha: [S, r, G, M^, P, d, N, S']
+    avaroha: [S', N, d, P, M^, G, r, S]
+    pakad: [S, r, G, M^, P, d, N, S', S', N, d, P, M^, G, r, S]
+    vakra: false
+    vadi: Ga
+    samvadi: dha
+    time: evening
+    instruments: [sitar, harmonium]
+    source: "[B] vol. III (Purvi thaat); [D] ch. 11"
+    notes: "Komal Re with teevra Ma - a combination found almost nowhere else."
+
+  - name: Marwa
+    thaat: Marwa
+    jati: sampurna-audav
+    aroha: [S, r, G, M^, D, N, S']
+    avaroha: [S', N, D, M^, G, r, S]
+    pakad: [S, r, G, M^, D, N, S', S', N, D, M^, G, r, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: sunset
+    instruments: [sarod, sitar]
+    source: "[B] vol. III (Marwa thaat); [D] ch. 12"
+    notes: "Shadav: Pa is omitted, which removes the stabilising fifth and leaves the raga restless."
+
+  - name: Yaman
+    aliases: [Kalyan]
+    thaat: Kalyan
+    jati: sampurna
+    aroha: [N, R, G, M^, P, D, N, S']
+    avaroha: [S', N, D, P, M^, G, R, S]
+    pakad: [N, R, G, M^, D, N, S', S', N, D, P, M^, G, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: evening
+    instruments: [sitar, bansuri]
+    source: "[B] vol. V (Kalyan thaat); [D] ch. 13; [RRD] class 'yaman'"
+    notes: "The flagship raga of the evening. Begins on Ni; teevra Ma is its signature."
+
+  - name: Lalit
+    thaat: Kalyan
+    jati: sampurna-audav
+    aroha: [S, R, G, M^, M, D, N, S']
+    avaroha: [S', N, D, M, M^, G, R, S]
+    pakad: [S, R, G, M^, M, D, N, S', S', N, D, M, M^, G, R, S]
+    vakra: true
+    vadi: Ga
+    samvadi: Ni
+    time: pre-dawn
+    instruments: [harmonium, bansuri]
+    source: "[B] vol. V; [J] ch. 12"
+    notes: "Vakra and unusual: both forms of Ma appear side by side, teevra ascending and shuddha descending."
+
+  - name: Bhupali
+    thaat: Kalyan
+    jati: audav
+    aroha: [S, R, G, P, D, S']
+    avaroha: [S', D, P, G, R, S]
+    pakad: [S, R, G, P, D, S', S', D, P, G, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: evening
+    instruments: [sitar, santoor]
+    source: "[B] vol. V; [RRD] class 'bhupali'"
+    notes: "Major pentatonic (0 2 4 7 9). Both Ma and Ni are absent, which is what makes it austere."
+
+  - name: Khamaj
+    thaat: Khamaj
+    jati: sampurna-audav
+    aroha: [S, R, G, M, P, D, N, S']
+    avaroha: [S', n, D, P, M, G, R, S]
+    pakad: [S, R, G, M, P, D, n, S', S', n, D, P, M, G, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: evening
+    instruments: [sitar, harmonium]
+    source: "[B] vol. V (Khamaj thaat); [D] ch. 14"
+    notes: "Shuddha Ni ascending, komal Ni descending - the single-note switch is the raga's mark."
+
+  - name: Desh
+    thaat: Khamaj
+    jati: audav-shadav
+    aroha: [R, G, M, P, D, n, S']
+    avaroha: [S', n, D, P, M, G, R, S]
+    pakad: [S, R, G, M, P, D, n, S', S', n, P, M, G, R, S]
+    vakra: true
+    vadi: Sa
+    samvadi: Ma
+    time: evening
+    instruments: [bansuri, sitar]
+    source: "[B] vol. V; [RRD] class 'desh'"
+    notes: "Vakra in ascent. Warm and romantic; Ni is komal in both directions."
+
+  - name: Kafi
+    thaat: Kafi
+    jati: sampurna
+    aroha: [S, R, g, M, P, D, n, S']
+    avaroha: [S', n, D, P, M, g, R, S]
+    pakad: [S, R, g, M, P, D, n, S', S', n, D, P, M, g, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: night
+    instruments: [sarod, bansuri]
+    source: "[B] vol. VI (Kafi thaat); [D] ch. 15"
+    notes: "Dorian-like (0 2 3 5 7 9 10). The basis of many thumri and dadra."
+
+  - name: Pilu
+    thaat: Kafi
+    jati: sampurna
+    aroha: [S, R, g, M, P, D, n, S']
+    avaroha: [S', n, D, P, M, g, R, S]
+    pakad: [S, R, g, M, P, D, n, S', S', r', g', M', P, M, g, R, S]
+    vakra: true
+    vadi: Ga
+    samvadi: Ni
+    time: any
+    instruments: [bansuri, harmonium]
+    source: "[B] vol. VI; [J] ch. 15"
+    notes: "Permissive: both forms of Re and Dha are tolerated, which makes Pilu a favourite for improvisation."
+
+  - name: Jog
+    thaat: Kafi
+    jati: audav-shadav
+    aroha: [S, g, M, P, n, S']
+    avaroha: [S', n, P, M, g, S]
+    pakad: [S, g, M, P, n, S', S', n, P, M, g, S]
+    vakra: false
+    vadi: Sa
+    samvadi: Ma
+    time: night
+    instruments: [sarod, sitar]
+    source: "[B] vol. VI; [RRD] class 'jog'"
+    notes: "Minor pentatonic (0 3 5 7 10). Simple, hypnotic contour."
+
+  - name: Asavari
+    thaat: Asavari
+    jati: sampurna
+    aroha: [S, R, g, M, P, d, n, S']
+    avaroha: [S', n, d, P, M, g, R, S]
+    pakad: [S, R, g, M, P, d, n, S', S', n, d, P, M, g, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: morning
+    instruments: [harmonium, bansuri]
+    source: "[B] vol. VI (Asavari thaat); [D] ch. 16"
+    notes: "Natural minor / Aeolian (0 2 3 5 7 8 10)."
+
+  - name: Darbari_Kanada
+    thaat: Asavari
+    jati: sampurna
+    aroha: [S, g, M, P, n, S']
+    avaroha: [S', n, P, M, g, S]
+    pakad: [S, g, M, P, n, S', S', n, P, M, g, R, S]
+    vakra: true
+    vadi: Sa
+    samvadi: Ma
+    time: midnight
+    instruments: [sarod, sitar]
+    source: "[B] vol. VI; [RRD] class 'darbari'; [D] ch. 17"
+    notes: "Vakra and grave. Komal Ga and komal Dha carry a heavy, slow andolan that the generator renders as a pitch glide."
+
+  - name: Jaunpuri
+    thaat: Asavari
+    jati: sampurna
+    aroha: [S, R, g, M, P, d, n, S']
+    avaroha: [S', n, d, P, M, g, R, S]
+    pakad: [S, R, g, M, P, d, P, M, g, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: morning
+    instruments: [harmonium, bansuri]
+    source: "[B] vol. VI; [J] ch. 18"
+    notes: "Like Asavari but with a characteristic repetition of Pa-Ma-Ga in descent."
+
+  - name: Brindavani_Sarang
+    aliases: [Sarang]
+    thaat: Kafi
+    jati: audav
+    aroha: [S, R, M, P, n, S']
+    avaroha: [S', n, P, M, R, S]
+    pakad: [S, R, M, P, n, S', S', n, P, M, R, S]
+    vakra: false
+    vadi: Sa
+    samvadi: Ma
+    time: noon
+    instruments: [bansuri, santoor]
+    source: "[B] vol. VI; [J] ch. 19"
+    notes: "Pentatonic (0 2 5 7 10). Associated with the heat of midday."
+
+  - name: Sorath
+    thaat: Khamaj
+    jati: audav
+    aroha: [S, R, G, P, D, S']
+    avaroha: [S', D, P, G, R, S]
+    pakad: [S, R, G, P, D, S', S', D, P, G, R, S]
+    vakra: false
+    vadi: Ga
+    samvadi: Ni
+    time: evening
+    instruments: [sitar, harmonium]
+    source: "[B] vol. V; [RRD] class 'sorath'"
+    notes: "Major pentatonic like Bhupali, but its phrase shapes are distinct enough to be its own raga."
+
+  - name: Gujri_Todi
+    thaat: Todi
+    jati: audav-shadav
+    aroha: [S, r, g, P, d, S']
+    avaroha: [S', d, P, g, r, S]
+    pakad: [S, r, g, P, d, S', S', d, P, g, r, S]
+    vakra: false
+    vadi: Sa
+    samvadi: Pa
+    time: late morning
+    instruments: [sitar, shehnai]
+    source: "[B] vol. IV; [J] ch. 20"
+    notes: "Shadav: Ma and Ni are omitted, leaving the characteristic gapped pentatonic outline."

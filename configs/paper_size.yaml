@@ -1,0 +1,81 @@
+# ---------------------------------------------------------------------------
+# paper_size.yaml - the 18-layer x 768-dim "paper size" decoder
+# ---------------------------------------------------------------------------
+# WHY THIS CONFIG EXISTS
+#
+# The reference implementation this project is built against (amaai-lab
+# text2midi, Apache-2.0) uses an 18-layer, 768-wide decoder. The main config
+# deliberately does NOT: on an 8 GB M2 the paper-size model needs roughly
+# 3-4x the optimizer memory and much larger batches to train well, and the
+# project's stated hardware is this laptop.
+#
+# This config exists so you can:
+#   1. A/B compare: train the same data at both sizes and compare evaluation
+#      metrics from `promptmusic evaluate`.
+#   2. Optionally warm-start from the released text2midi weights, since only a
+#      paper-size decoder can load them tensor-for-tensor.
+#
+#     promptmusic train --config paper_size
+#
+# REQUIREMENTS / HONEST WARNINGS
+#   * Peak memory is roughly double the default config. If macOS kills the
+#     process, drop train.batch_size to 4 and set train.grad_accum to 4.
+#   * d_model 768 with 12 heads (768/12 = 64 per head, the standard ratio).
+#   * init_from_released (below) imports matching tensors from the released
+#     checkpoint and reports which tensors could NOT be imported. It is a
+#     starting point, not a drop-in: the text2midi decoder was trained with a
+#     different text conditioning interface, so the projection and the first
+#     attention layers will not line up perfectly. Treat it as transfer
+#     learning to be fine-tuned, not as a usable model out of the box.
+# ---------------------------------------------------------------------------
+
+project:
+  name: prompt_music_gen_paper
+  seed: 42
+
+model:
+  decoder:
+    d_model: 768              # matches released text2midi width
+    nhead: 12                 # 768 / 12 = 64 dims per head
+    num_layers: 18            # released checkpoint depth
+    dim_feedforward: 3072     # 4x width, as in the reference
+    dropout: 0.1
+    max_len: 4096
+    norm_first: true
+    activation: gelu
+    tied_embeddings: false
+    # --- optional transfer from the released Apache-2.0 checkpoint ----------
+    # Path to a downloaded text2midi pytorch_model.bin. Leave null to train
+    # this size from scratch. Download with:
+    #     promptmusic download --source text2midi
+    # then set:
+    #     -o model.decoder.init_from_released=data/downloads/text2midi_pytorch_model.bin
+    init_from_released: null
+
+data:
+  limit: 20000                # same slice as default for a fair A/B comparison
+  val_fraction: 0.05
+
+tokenizer:
+  max_tokens: 4096
+
+train:
+  epochs: 3
+  batch_size: 4               # halved versus default: width tripled the memory
+  grad_accum: 2               # effective batch 8, matching default.yaml
+  lr: 1.5e-4                  # larger models prefer smaller step sizes
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  min_lr_ratio: 0.05
+  max_grad_norm: 1.0
+  num_workers: 0
+  log_every: 50
+  val_every: 500
+  save_every: 500
+  device: auto
+
+generate:
+  max_new_tokens: 1024
+  temperature: 1.0
+  top_k: 50
+  top_p: 0.95

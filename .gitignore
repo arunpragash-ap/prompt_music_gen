@@ -1,0 +1,119 @@
+# ---------------------------------------------------------------------------
+# prompt_music_gen - Git ignore rules
+#
+# Everything listed here is either (a) large, (b) derived, or (c) secret.
+# All of it can be regenerated with the `promptmusic` CLI.
+# See docs/10_DISK_CLEANUP.md for the full "what to delete after pushing
+# to GitHub" guide.
+# ---------------------------------------------------------------------------
+
+# --- Large generated data (REGENERATE: `promptmusic download`) -------------
+dataset/
+data/downloads/
+data/cache/
+data/processed/
+*.tar.gz
+*.tgz
+*.tar
+*.zip
+*.7z
+
+# --- Model outputs (REGENERATE: `promptmusic train`) -----------------------
+outputs/
+runs/
+wandb/
+lightning_logs/
+*.ckpt
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.onnx
+*.torchscript
+*.gguf
+*.mid
+*.midi
+*.wav
+*.flac
+*.mp3
+*.npz
+*.npy
+*.pkl
+*.pickle
+*.log
+logs/
+
+# --- Hugging Face cache (REGENERATE: `promptmusic download`) ---------------
+.hf_cache/
+hf_cache/
+~/.cache/huggingface/
+
+# --- Virtual environments (REGENERATE: `make venv`) -----------------------
+.venv/
+venv/
+env/
+ENV/
+
+# --- Python ---------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# --- Tooling caches --------------------------------------------------------
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
+dmypy.json
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+.tox/
+.nox/
+
+# --- Editors / OS ----------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# --- Secrets ---------------------------------------------------------------
+.env
+.env.*
+*.pem
+*.key
+credentials.json
+secrets.yaml
+hf_token.txt
+
+# --- OS swap / large junk --------------------------------------------------
+.DS_Store
+*.sock
+core

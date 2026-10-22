@@ -1,0 +1,145 @@
+# ---------------------------------------------------------------------------
+# default.yaml - the canonical configuration
+# ---------------------------------------------------------------------------
+# HOW CONFIGS WORK (read this first)
+#
+# Every value below is merged ON TOP of the built-in defaults in
+# src/promptmusic/config.py. You only need to write a key if you want to
+# change it. Configs are chosen on the command line:
+#
+#     promptmusic train --config default
+#     promptmusic train --config smoke -o train.lr=1e-4
+#
+# Dotted overrides (-o key.path=value) always win over this file, and the
+# PROMPTMUSIC_SEED environment variable wins over both.
+#
+# The values here match the project's design decisions:
+#   * frozen google/mt5-base text encoder (Tamil-capable, permissive Apache-2.0)
+#   * custom 12-layer / 512-dim / 8-head causal decoder (~60M parameters)
+#   * REMI tokenization via miditok
+#   * the target machine is an Apple M2 with 8 GB RAM, so batch sizes and
+#     worker counts are deliberately conservative.
+# ---------------------------------------------------------------------------
+
+project:
+  name: prompt_music_gen      # run artifacts land in outputs/<name>/
+  seed: 42                    # every random choice derives from this
+  deterministic: false        # true = slower but bit-identical runs
+
+paths:
+  data_dir: dataset
+  output_dir: outputs
+  cache_dir: data/cache
+  processed_dir: data/processed
+
+data:
+  dataset: midicaps
+  hf_repo_id: amaai-lab/MidiCaps
+  caption_file: train.json
+  midi_subdir: midicaps
+  # How many training examples to index. 20k is the sweet spot on 8 GB:
+  # ~20-30 min/epoch, 3 epochs in about an hour. Set null for all 168k
+  # (requires the full download and roughly 6-8 hours/epoch on this machine).
+  limit: 20000
+  val_fraction: 0.05
+  languages: [en, ta]         # "ta" is used only when use_tamil_for_training is true
+  use_tamil_for_training: false   # flip on after `promptmusic translate`
+
+  # Phase 2: English -> Tamil caption translation (IndicTrans2, MIT).
+  translation:
+    model: ai4bharat/indictrans2-en-indic-dist-200M
+    batch_size: 16
+    max_input_length: 192
+    max_new_tokens: 256
+    num_beams: 4
+    device: auto
+    limit: 20000              # translate a subset first; raise it to scale up
+
+  # Phase 3: lyric corpus (asigalov61/Lyrics-MIDI-Dataset, CC-BY-NC-SA-4.0
+  # - NON-COMMERCIAL. Keep disabled unless you accept that licence.)
+  lyrics:
+    enabled: false
+    hf_repo_id: asigalov61/Lyrics-MIDI-Dataset
+    limit: 5000
+
+tokenizer:
+  name: remi
+  use_programs: true          # Program_N tokens: how multi-track survives
+  beat_res: {"0,4": 4}        # 16th-note grid: 1 step = 0.125 s at 120 BPM
+  num_velocities: 32          # 32 velocity buckets
+  tempo_range: [40, 250]
+  max_tokens: 4096            # truncate anything longer (rare)
+  lyrics:
+    enabled: false            # Phase 3 switch, mirrors data.lyrics.enabled
+    max_vocab: 8000
+    mode: hybrid              # English words + Tamil characters
+    max_lyric_tokens: 256
+
+model:
+  text_encoder:
+    name: google/mt5-base     # frozen; 15/15 Tamil chars in vocab (flan-t5: 1/15)
+    freeze: true
+    max_length: 128           # prompt token cap
+    dtype: float32            # MPS float16 is unstable for T5 softmax
+  decoder:
+    d_model: 512
+    nhead: 8
+    num_layers: 12
+    dim_feedforward: 2048
+    dropout: 0.1
+    max_len: 4096
+    norm_first: true          # pre-norm: steadier training at this size
+    activation: gelu
+    tied_embeddings: false
+
+train:
+  epochs: 3
+  batch_size: 8               # 8 x 1024 tokens fits an 8 GB M2 with headroom
+  grad_accum: 1               # raise this when lowering batch_size
+  lr: 3.0e-4
+  weight_decay: 0.01
+  warmup_ratio: 0.05
+  min_lr_ratio: 0.05          # cosine decays to 5% of peak
+  max_grad_norm: 1.0
+  num_workers: 0              # >0 can hang on macOS + MPS; 0 is safest
+  log_every: 50
+  val_every: 500
+  save_every: 500
+  max_steps: null             # null = run every epoch
+  resume: null                # path to last.pt to continue a run
+  device: auto                # auto -> mps on this machine
+
+generate:
+  max_new_tokens: 1024
+  temperature: 1.0            # >1 = adventurous, <1 = safe
+  top_k: 50
+  top_p: 0.95
+  num_samples: 1
+  num_beams: 1                # >1 = slower, more conservative
+  repetition_penalty: 1.0     # try 1.1-1.2 if output loops
+  seed: 42
+
+render:
+  sample_rate: 44100
+  backend: auto               # fluidsynth -> pyfluidsynth -> numpy
+  soundfont: null             # null = auto-discover (see render.py)
+  gain: 0.8
+
+evaluate:
+  metrics: [compression_ratio, key_match, tempo_match, note_density]
+
+export:
+  formats: [pt, torchscript]
+  opset: 17
+  half: false
+
+reference:                    # Phase 4 - reference music conditioning
+  prime_bars: 2               # bars of a reference MIDI used to prime decode
+  prime_max_tokens: 256
+  analyze_audio: true         # librosa descriptors for audio references
+
+raga:                         # Phase 5 - Hindustani raga synthesis
+  enabled: false
+  table: data/ragas/raga_table.yaml
+  variations_per_raga: 24
+  seed: 7
