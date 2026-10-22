@@ -129,11 +129,15 @@ def _load_for_inference(
         pad_id=0, bos_id=1, eos_id=2,
         device=device,
     )
-    missing, unexpected = model.decoder.load_state_dict(payload["model_state"], strict=False)
+    # The checkpoint stores the FULL MusicModel state dict (keys prefixed
+    # "decoder." and "text_encoder."), so it must be loaded into the whole
+    # model - loading it into model.decoder matches no key and silently
+    # leaves the decoder at random init (strict=False hides it as a count).
+    missing, unexpected = model.load_state_dict(payload["model_state"], strict=False)
     if missing:
-        LOG.warning("%d decoder tensors were missing from the checkpoint", len(missing))
+        LOG.warning("%d model tensors were missing from the checkpoint", len(missing))
     if unexpected:
-        LOG.warning("%d checkpoint tensors were not used by the decoder", len(unexpected))
+        LOG.warning("%d checkpoint tensors were not used by the model", len(unexpected))
     model.eval()
 
     text_tok = TextTokenizer(

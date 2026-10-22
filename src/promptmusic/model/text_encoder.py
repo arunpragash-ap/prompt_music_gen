@@ -171,18 +171,23 @@ class TextTokenizer:
             self.tokenizer.pad_token = self.tokenizer.eos_token or "<pad>"
 
     def __call__(self, texts: str | list[str], max_length: int | None = None) -> dict[str, torch.Tensor]:
-        single = isinstance(texts, str)
-        batch = [texts] if single else list(texts)
-        enc = self.tokenizer(
+        """Tokenise one string or a list; always returns batched ``[B, T]``.
+
+        The batch dimension is never squeezed, even for a single string:
+        ``T5EncoderModel`` requires ``[B, T]`` input, and a squeezed ``[T]``
+        crashes deep inside transformers with the unhelpful
+        ``ValueError: not enough values to unpack (expected 2, got 1)``.
+        Train passes a list (so it never hit this); generate passes one
+        string.
+        """
+        batch = [texts] if isinstance(texts, str) else list(texts)
+        return self.tokenizer(
             batch,
             return_tensors="pt",
             padding=True,
             truncation=True,
             max_length=max_length or self.max_length,
         )
-        if single:
-            enc = {k: v[0] for k, v in enc.items()}
-        return enc
 
     def __len__(self) -> int:
         return len(self.tokenizer)
