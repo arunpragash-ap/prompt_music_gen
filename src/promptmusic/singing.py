@@ -930,7 +930,13 @@ def _pitch_at(notes: Sequence[MelodyNote], t: float) -> int:
 
 
 def smooth_pitches(pitches: Sequence[int], *, max_leap: int = 7) -> list[int]:
-    """Median-smooth a contour, then fold octaves to avoid un-singable leaps."""
+    """Median-smooth a contour, then cap leaps without reversing direction.
+
+    The cap used to fold by octaves (subtract 12 until the leap is small),
+    which turns an octave leap into a unison. Clamping keeps "up" up; the
+    interval is simply narrowed, and :func:`fit_pitch` compresses it again to
+    fit the speaker's range.
+    """
     if not pitches:
         return []
     p = list(pitches)
@@ -939,13 +945,11 @@ def smooth_pitches(pitches: Sequence[int], *, max_leap: int = 7) -> list[int]:
         for i in range(1, len(p) - 1):
             med[i] = int(np.median(p[i - 1 : i + 2]))
         p = med
-    out = [p[0]]
+    out = [int(p[0])]
     for v in p[1:]:
-        while v - out[-1] > max_leap:
-            v -= 12
-        while v - out[-1] < -max_leap:
-            v += 12
-        out.append(int(v))
+        delta = int(v) - out[-1]
+        delta = max(-max_leap, min(max_leap, delta))
+        out.append(out[-1] + delta)
     return out
 
 
@@ -1144,23 +1148,26 @@ def fit_pitch(
     pitch: int,
     natural_f0: float,
     *,
-    max_semitones: float = 5.5,
-    compression: float = 0.7,
+    center_pitch: float = 64.0,
+    max_semitones: float = 7.0,
+    compression: float = 0.55,
 ) -> float:
     """Target frequency for a MIDI pitch, relative to the speaker's voice.
 
-    Speech can only be shifted so far before it sounds like a chipmunk. We
-    therefore fold the melody by octaves into a ±``max_semitones`` window
-    around the speaker's median F0 and gently compress large intervals.
-    The melodic contour (up/down) survives; the absolute register becomes
-    one the synthetic voice can actually produce.
+    Speech can only be shifted so far before it sounds like a chipmunk, so the
+    melody is *transposed* until its centre sits on the speaker's F0, then its
+    intervals are compressed by ``compression`` and the result is clamped to
+    ±``max_semitones``.
+
+    An earlier version folded by octaves instead. That is musically wrong: an
+    octave leap maps to a **unison**, so any repeated-octave melody became a
+    monotone chant. Transposing plus interval compression keeps the direction
+    (up stays up) and the shape of the tune.
     """
     if natural_f0 <= 0:
         natural_f0 = 180.0
-    f = 440.0 * 2.0 ** ((pitch - 69) / 12.0)
-    semis = 12.0 * math.log2(f / natural_f0)
-    semis = ((semis + max_semitones) % 12.0) - max_semitones
-    semis = float(np.clip(semis * compression, -max_semitones, max_semitones))
+    semis = (float(pitch) - float(center_pitch)) * float(compression)
+    semis = float(np.clip(semis, -max_semitones, max_semitones))
     return float(natural_f0 * 2.0 ** (semis / 12.0))
 
 
@@ -1171,6 +1178,7 @@ def render_line(
     sr: int = PROCESS_RATE,
     natural_f0: float = 0.0,
     vibrato_semitones: float = 0.45,
+    center_pitch: float = 64.0,
 ) -> np.ndarray:
     """Turn one spoken line into a sung line placed at absolute times.
 
@@ -1194,7 +1202,7 @@ def render_line(
         seg = x[b0:b1]
         if seg.size < 16:
             continue
-        target_f = fit_pitch(unit.pitch, natural_f0)
+        target_f = fit_pitch(unit.pitch, natural_f0, center_pitch=center_pitch)
         seg_f0 = estimate_f0(seg, sr) or natural_f0
         semis = 12.0 * math.log2(max(target_f, 1.0) / max(seg_f0, 1.0))
         # Clamp to keep the artefacts in check even if the F0 estimate is odd.
@@ -1365,6 +1373,9 @@ def sing_song(
     # --- render each line on its section ---------------------------------- #
     vocal = np.zeros(int(total_sec * PROCESS_RATE) + PROCESS_RATE, dtype=np.float32)
     placements: list[float] = []
+    # Transpose the whole melody so its centre sits on the speaker's F0; each
+    # line then keeps the tune's direction instead of being octave-folded.
+    center_pitch = float(np.median([n.pitch for n in melody])) if melody else 64.0
     for line, sylls, section, audio in zip(lines, syllables_per_line, sections, spoken):
         # If the section is note-rich, sing the actual notes; if it is sparse
         # (common for a short-trained model), give each syllable its own note
@@ -1377,7 +1388,9 @@ def sing_song(
             continue
         offset = min(u.start for u in units)
         rel = [SungUnit(u.syllable, u.start - offset, u.duration, u.pitch, u.n_notes) for u in units]
-        seg = render_line(audio, rel, sr=PROCESS_RATE, natural_f0=natural_f0)
+        seg = render_line(
+            audio, rel, sr=PROCESS_RATE, natural_f0=natural_f0, center_pitch=center_pitch
+        )
         i0 = max(0, int(round(offset * PROCESS_RATE)))
         n = min(len(seg), len(vocal) - i0)
         if n > 0:

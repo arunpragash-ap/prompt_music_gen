@@ -58,7 +58,7 @@ Total model: 328 M parameters, of which 51 M are trained. It runs on an
 ```bash
 uv venv --python 3.12 .venv
 uv pip install -e ".[mac]"
-.venv/bin/python -m pytest -q -m "not slow"      # 265 tests
+.venv/bin/python -m pytest -q -m "not slow"      # 267 tests
 .venv/bin/promptmusic info
 .venv/bin/promptmusic download --source midicaps # 5.5 GB, resumable
 .venv/bin/promptmusic tokenize -c ta_love_test
@@ -121,7 +121,7 @@ Every command has `--help`. `make help` lists the equivalent shortcuts.
 ```
 configs/     YAML configs (smoke, default, ta_love_test, from_scratch, paper_size)
 src/         the Python package
-tests/       265 tests (fast, no network)
+tests/       267 tests (fast, no network)
 docs/        the documentation above
 scripts/     repo setup + disk report
 data/        raga table, lyrics, processed caches (large parts gitignored)

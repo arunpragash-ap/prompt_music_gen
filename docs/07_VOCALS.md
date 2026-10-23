@@ -60,10 +60,12 @@ vibrato. It is still a synthetic voice.
    takes its pitch from the nearest melody note. This is what stops 13
    syllables being crushed into a 0.05 s grace note.
 6. **Pitch-shape the speech.** Each syllable is spoken once by the TTS model,
-   then `fit_pitch()` folds the note into ±5.5 semitones of the speaker's own
-   F0 (E3-ish for the Tamil MMS voice) and compresses the interval by 0.7 so
-   the result stays natural. `pitch_shift()` uses a phase vocoder plus
-   resampling; `time_stretch()` uses the same STFT engine.
+   then `fit_pitch()` transposes the melody so its centre sits on the
+   speaker's own F0 (E3-ish for the Tamil MMS voice), compresses intervals by
+   0.55 and clamps to ±7 semitones. Octave *folding* would turn an octave leap
+   into a unison and flatten the tune, so the contour is kept and narrowed
+   instead. `pitch_shift()` uses a phase vocoder plus resampling;
+   `time_stretch()` uses the same STFT engine.
 7. **Closed-loop correction.** After shifting, `render_line()` measures the
    syllable's F0 and corrects up to ±4 semitones in at most two passes.
 8. **Human detail.** `vibrato()` adds a delayed 5 Hz oscillation (about 25
@@ -143,7 +145,7 @@ rendering again. Otherwise it humanises the MIDI and renders with fluidsynth.
 | Commercial use? | no with the default voice (CC-BY-NC) |
 
 The demo (`data/lyrics/ta_love_song.txt`, 8 lines, 108 syllables) produces a
-≈50 s track with 36 melodic targets and 8 phrases; the vocal sits about 4 dB
+≈50 s track with 36 melodic targets and 8 phrases; the vocal sits about 3 dB
 above the instrumental and the mix peaks at −1 dBFS.
 
 ## 7. Why not real Tamil singing?
@@ -175,7 +177,7 @@ can replace the TTS synthesis step without touching the music model.
 | `pass --lyrics or --lyrics-file` | nothing to sing | pass the text |
 | Vocal is silent | the MIDI has no melodic notes | run `promptmusic arrange` first, or generate a longer take |
 | Words are rushed | too many syllables for the section | shorten lines or generate more bars |
-| Big pitch jumps | wide melody range | `fit_pitch` folds by octave; reduce `--gain` if it is harsh |
+| Big pitch jumps | wide melody range | intervals are compressed 0.55 and clamped to ±7 semitones; shorten the melody or pick a closer voice |
 | Buzzy consonants | large pitch shift | expected; use shorter syllables or a closer voice |
 | Vocals too loud/quiet | gain staging | `--gain 0` for equal active RMS, negative to sit back |
 | `ModuleNotFoundError: transformers` | wrong interpreter | use `.venv/bin/promptmusic` |

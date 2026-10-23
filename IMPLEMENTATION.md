@@ -195,9 +195,18 @@ eventually learn durations.
 * Raw TTS was 22 dB louder than the render; `master_mix()` now matches active
   RMS instead of peak-normalising each source.
 
+### 5.13 Octave-folding flattened the vocal melody
+`fit_pitch()` folded each note by octaves into ±5.5 semitones of the speaker's
+F0, and `smooth_pitches()` folded any leap larger than seven semitones the same
+way. Both map an octave leap to a **unison**, so melodies that alternated
+between two octaves came out as a monotone chant (one demo line sat on a single
+note for five seconds). The fix transposes the melody's centre onto the
+speaker, compresses intervals by 0.55, and clamps leaps without changing their
+direction. Median pitch error after the fix: 30 cents across 107 syllables.
+
 ## 6. Testing philosophy
 
-* 265 tests, all fast and offline (`-m "not slow"`); no network, no model
+* 267 tests, all fast and offline (`-m "not slow"`); no network, no model
   downloads, no dataset.
 * Pure functions are tested exhaustively (placement, mixing, resampling,
   tokenizer round-trips, sampler paths).

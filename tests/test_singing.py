@@ -184,10 +184,17 @@ class TestMelody:
         assert len(phrases) == 2
         assert phrases[0][0].pitch == 60 and phrases[1][0].pitch == 64
 
-    def test_smooth_pitches_folds_large_leaps(self):
+    def test_smooth_pitches_caps_large_leaps(self):
         out = smooth_pitches([60, 61, 90, 62, 63])
         assert len(out) == 5
         assert all(abs(b - a) <= 7 for a, b in zip(out, out[1:]))
+
+    def test_smooth_pitches_keeps_octave_direction(self):
+        # Regression: folding by octaves turned an octave leap into a unison,
+        # so a melody alternating 55/67 became one repeated pitch.
+        out = smooth_pitches([55] * 7 + [67] * 6)
+        assert out[-1] > out[0]
+        assert out[-1] - out[0] >= 5
 
 
 # --------------------------------------------------------------------------- #
@@ -237,7 +244,16 @@ class TestAlignment:
     def test_fit_pitch_keeps_voice_in_range(self):
         for pitch in (30, 60, 83, 100):
             f = fit_pitch(pitch, natural_f0=170.0)
-            assert 170 * 2 ** (-5.5 / 12) <= f <= 170 * 2 ** (5.5 / 12)
+            assert 170 * 2 ** (-7 / 12) <= f <= 170 * 2 ** (7 / 12)
+
+    def test_fit_pitch_preserves_direction(self):
+        # Regression: octave folding mapped an octave leap to a *unison*,
+        # turning repeated-octave melodies into a monotone chant.
+        low = fit_pitch(60, natural_f0=170.0, center_pitch=64)
+        high = fit_pitch(72, natural_f0=170.0, center_pitch=64)
+        assert 12 * np.log2(high / low) > 5.0
+        # The melody's centre lands on the speaker's F0.
+        assert fit_pitch(64, natural_f0=170.0, center_pitch=64) == pytest.approx(170.0)
 
 
 # --------------------------------------------------------------------------- #
