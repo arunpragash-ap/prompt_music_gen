@@ -81,7 +81,7 @@ scaffolded but not enabled.
 | Training, 2 048 tokens | thrashed swap; killed |
 | Loss at step 0 → step 120 | 5.49 → 0.27 |
 | Validation loss at step 100 | 3.39 |
-| Checkpoint size | 1.6 GB (with optimizer state) |
+| Checkpoint size | 1.7 GB (with optimizer state) |
 | Generation speed (MPS) | ~64 tokens/s (2 559 tokens ≈ 40 s) |
 | Tamil love song | 78.0 s MIDI, 516 notes, 18 instruments, 81.6 s WAV |
 | Evaluation of that song | validity 100 %, 6.61 notes/s, 12 pitch classes, entropy 3.43 bits, repetition 1.8 %, CR 0.96 |

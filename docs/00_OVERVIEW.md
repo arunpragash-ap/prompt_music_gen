@@ -109,7 +109,7 @@ prompt_music_gen/
 | Token density (love-song subset) | ~40 tokens/second |
 | Training speed (1 024-token examples) | ~2.5–3 s/step |
 | Generation speed | ~64 tokens/s |
-| Checkpoint size | 1.6 GB (includes optimizer state) |
+| Checkpoint size | 1.7 GB (includes optimizer state) |
 | Full MidiCaps download | 5.5 GB (168 385 MIDI files) |
 | mT5-base download | 4.3 GB |
 

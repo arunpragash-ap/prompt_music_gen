@@ -104,7 +104,7 @@ Additional settings that matter:
 * 1 024-token examples, batch 1, gradient accumulation 2
 * 100 steps (killed at 120 when swap pressure made it slow)
 * validation loss **3.39**
-* 1.6 GB file (weights + optimizer state + config + vocabulary)
+* 1.7 GB file (weights + optimizer state + config + vocabulary)
 
 It is a *demonstration*: enough to prove every stage of the pipeline on real
 data, not enough to produce polished music.

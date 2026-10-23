@@ -48,7 +48,7 @@ promptmusic export outputs/prompt_music_gen/checkpoints/best.pt -f pt --out mode
 promptmusic export outputs/prompt_music_gen/checkpoints/best.pt -f torchscript
 promptmusic inspect model.pt                       # sanity-check metadata
 
-# copy just this file (tens of MB, not 1.6 GB)
+# copy just this file (tens of MB, not 1.7 GB)
 scp model.pt other-host:/srv/promptmusic/
 ```
 

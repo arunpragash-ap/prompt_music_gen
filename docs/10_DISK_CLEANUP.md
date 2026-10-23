@@ -21,7 +21,7 @@ promptmusic disk-report --json     # machine-readable
 | `data/downloads/midicaps.tar.gz` | **1.5 GB** | the archive you already extracted | **yes** — never needed again |
 | `data/downloads/train.json` | **408 MB** | caption index (JSON Lines) | **yes** — re-download |
 | `.hf_cache/` | **4.5 GB** | mT5-base (4.3 GB) + Tamil TTS (139 MB) | **yes** — auto re-download |
-| `outputs/` | **3.2 GB** | checkpoints (2 × 1.6 GB), samples (27 MB), raga corpus (2.6 MB) | **yes** if you accept retraining |
+| `outputs/` | **3.2 GB** | checkpoints (2 × 1.7 GB), samples (27 MB), raga corpus (2.6 MB) | **yes** if you accept retraining |
 | `.venv/` | **905 MB** | the Python environment | yes — recreate with `uv venv` |
 | `data/processed/` | **5 MB** | token caches + subsets | yes — re-tokenise |
 | `data/ragas/` | < 1 MB | the raga table (source, not data) | **no** — hand-written source |
@@ -34,7 +34,7 @@ Total regenerable: roughly **15 GB**.
 
 ```bash
 rm -f data/downloads/midicaps.tar.gz        # 1.5 GB, extracted already
-rm -rf outputs/prompt_music_gen/checkpoints/last.pt   # 1.6 GB older snapshot
+rm -rf outputs/prompt_music_gen/checkpoints/last.pt   # 1.7 GB older snapshot
 rm -rf .hf_cache/hub/models--facebook--mms-tts-tam    # 139 MB, re-downloaded on demand
 ```
 
