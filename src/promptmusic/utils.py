@@ -445,8 +445,12 @@ def disk_usage_report() -> dict[str, Any]:
     add(PROJECT_ROOT / ".venv", False,
         "the virtual environment - delete only if you plan to rebuild it with "
         "`uv venv` + `uv pip install -e .` (saves a lot, costs a few minutes)")
-    add(PROJECT_ROOT / "data", False,
-        "config + raga table - small source files; KEEP (they are your code, not artifacts)")
+    # The source part of data/ is small and must survive; the large artifact
+    # subdirectories (downloads, cache, processed) are counted above, so do
+    # not add data/ as a whole here - that double-counted ~2 GB and marked
+    # deletable content as "keep".
+    for src in (PROJECT_ROOT / "data" / "ragas", PROJECT_ROOT / "data" / "lyrics"):
+        add(src, False, "hand-written source (raga table / your lyrics) - KEEP")
 
     entries.sort(key=lambda e: -e["size_bytes"])
     reclaimable = sum(e["size_bytes"] for e in entries if e["deletable"])
