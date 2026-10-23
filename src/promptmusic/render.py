@@ -54,6 +54,7 @@ LOG = logger("promptmusic.render")
 __all__ = [
     "RenderResult",
     "render_midi",
+    "humanize_midi",
     "find_soundfont",
     "available_backends",
     "DEFAULT_SAMPLE_RATE",
@@ -218,6 +219,53 @@ def render_midi(
         + ", ".join(order)
         + (f". Last error: {last_error}" if last_error else "")
     )
+
+
+def humanize_midi(
+    midi_path: str | Path,
+    out_path: str | Path | None = None,
+    *,
+    timing: float = 0.007,
+    velocity: int = 5,
+    seed: int = 0,
+    drums: bool = False,
+) -> Path:
+    """Nudge note timings and velocities so the render is less mechanical.
+
+    A language model emits notes on an exact grid. Real players do not: they
+    anticipate or lag the beat by a few milliseconds and vary dynamics.
+    ``timing`` is the standard deviation in seconds for note starts/ends and
+    ``velocity`` the uniform range added to each note's MIDI velocity. Drum
+    tracks are left alone by default - randomising a kick can smear the
+    groove rather than humanise it.
+
+    Returns the path that was written (``out_path`` or ``<stem>_humanized.mid``).
+    """
+    import numpy as np
+    import pretty_midi
+
+    midi_path = Path(midi_path)
+    if out_path is None:
+        out_path = midi_path.with_name(f"{midi_path.stem}_humanized.mid")
+    out_path = Path(out_path)
+
+    pm = pretty_midi.PrettyMIDI(str(midi_path))
+    rng = np.random.default_rng(seed)
+    for inst in pm.instruments:
+        if inst.is_drum and not drums:
+            continue
+        for note in inst.notes:
+            delta = float(rng.normal(0.0, timing))
+            note.start = max(0.0, note.start + delta)
+            note.end = max(note.start + 0.02, note.end + delta)
+            if velocity:
+                note.velocity = int(
+                    np.clip(note.velocity + rng.integers(-velocity, velocity + 1), 1, 127)
+                )
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    pm.write(str(out_path))
+    LOG.info("humanised %s -> %s", midi_path.name, out_path.name)
+    return out_path
 
 
 def _backend_order(backend: str) -> list[str]:

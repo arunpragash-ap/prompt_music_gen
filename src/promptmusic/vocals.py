@@ -130,7 +130,7 @@ def _midi_timing(midi_path: Path | str) -> tuple[float, float]:
     import pretty_midi
 
     pm = pretty_midi.PrettyMIDI(str(midi_path))
-    tempos, _ = pm.get_tempo_changes()
+    _, tempos = pm.get_tempo_changes()
     valid = [float(t) for t in np.atleast_1d(tempos) if 20.0 <= float(t) <= 400.0]
     bpm = valid[0] if valid else _FALLBACK_BPM
     # pretty_midi meters are almost always 4/4 in MidiCaps; read the first

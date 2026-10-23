@@ -150,6 +150,34 @@ def make_scheduler(
 # --------------------------------------------------------------------------- #
 # The trainer
 # --------------------------------------------------------------------------- #
+def restore_resume_weights(
+    model: Any, state: dict[str, Any], resume: str | Path
+) -> tuple[bool, list[str], list[str]]:
+    """Load a checkpoint's weights into ``model``, refusing silent resets.
+
+    Checkpoints written by :func:`save_checkpoint` store the **full**
+    ``MusicModel`` state dict (keys prefixed ``decoder.`` and
+    ``text_encoder.``). Loading that into ``model.decoder`` matches no key at
+    all and, with ``strict=False``, silently leaves the decoder at random
+    init - i.e. resuming would throw away every trained weight. Older
+    checkpoints store only the decoder.
+
+    Returns ``(full_checkpoint, missing, unexpected)``; raises
+    :class:`RuntimeError` when decoder tensors are missing.
+    """
+    full_checkpoint = any(k.startswith("decoder.") for k in state)
+    target = model if full_checkpoint else model.decoder
+    missing, unexpected = target.load_state_dict(state, strict=False)
+    decoder_missing = [k for k in missing if "decoder." in k or not full_checkpoint]
+    if decoder_missing:
+        raise RuntimeError(
+            f"resume checkpoint {resume} is missing {len(decoder_missing)} "
+            f"model tensors (e.g. {decoder_missing[:3]}); refusing to "
+            "resume from randomly initialised weights"
+        )
+    return full_checkpoint, list(missing), list(unexpected)
+
+
 def train(
     config: Config | str | Path | None = None,
     *,
@@ -266,7 +294,14 @@ def train(
     resume = tcfg.get("resume")
     if resume:
         payload = load_checkpoint(resume, map_location=device)
-        model.decoder.load_state_dict(payload["model_state"], strict=False)
+        state = payload["model_state"]
+        full_checkpoint, missing, unexpected = restore_resume_weights(model, state, resume)
+        LOG.info(
+            "resume weights: %s format, %d missing / %d unexpected tensors",
+            "full-model" if full_checkpoint else "decoder-only",
+            len(missing),
+            len(unexpected),
+        )
         if "optimizer_state" in payload:
             optimizer.load_state_dict(payload["optimizer_state"])
         if "scheduler_state" in payload:

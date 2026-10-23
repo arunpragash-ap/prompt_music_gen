@@ -442,9 +442,39 @@ def cmd_generate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_arrange(args: argparse.Namespace) -> int:
+    """Clean a generated MIDI: key, instrument roles, ranges, velocities."""
+    from .arrange import arrange_midi
+
+    src = Path(args.midi)
+    if not src.is_file():
+        print(f"not found: {src}", file=sys.stderr)
+        return 2
+    try:
+        out, report = arrange_midi(
+            src,
+            args.out,
+            max_instruments=args.max_instruments,
+            snap_key=not args.no_snap,
+            balance=not args.no_balance,
+            fold_ranges=not args.no_fold,
+            dedupe=not args.no_dedupe,
+            sustain=not args.no_sustain,
+        )
+    except Exception as exc:
+        print(f"arrange failed: {exc}", file=sys.stderr)
+        return 1
+    payload = report.to_dict()
+    payload["out"] = str(out)
+    _print(payload, args.json, title="arranged")
+    for w in report.warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    return 0
+
+
 def cmd_render(args: argparse.Namespace) -> int:
     """MIDI -> WAV using the best available synthesiser."""
-    from .render import available_backends, render_midi
+    from .render import available_backends, humanize_midi, render_midi
 
     if args.backends:
         _print(available_backends(), args.json, title="rendering backends")
@@ -479,8 +509,11 @@ def cmd_render(args: argparse.Namespace) -> int:
 
     for mid in mids:
         try:
+            playable = mid
+            if args.humanize:
+                playable = humanize_midi(mid, seed=args.seed)
             r = render_midi(
-                mid, args.out,
+                playable, args.out,
                 backend=args.backend or cfg.get("render.backend", "auto"),
                 soundfont=args.soundfont,
                 sample_rate=args.rate or int(cfg.get("render.sample_rate", 44100)),
@@ -538,6 +571,54 @@ def cmd_vocals(args: argparse.Namespace) -> int:
         return 1
 
     _print(asdict(result), args.json, title="vocal mix")
+    for w in result.warnings:
+        print(f"warning: {w}", file=sys.stderr)
+    return 0
+
+
+def cmd_sing(args: argparse.Namespace) -> int:
+    """Melody-aware singing: align the lyrics to the generated tune, master it.
+
+    Unlike ``vocals`` (speech placed on bars), this extracts the lead melody
+    from the MIDI, assigns syllables to its notes, pitch-shapes each syllable
+    to the note, and runs a mastering chain. See ``promptmusic.singing`` for
+    the honest limits of pitch-shaped TTS singing.
+    """
+    from .singing import DEFAULT_VOICE, sing_song
+
+    midi = Path(args.midi)
+    if not midi.exists():
+        print(f"not found: {midi}", file=sys.stderr)
+        return 2
+    if args.wav and not Path(args.wav).exists():
+        print(f"not found: {args.wav}", file=sys.stderr)
+        return 2
+    if not args.lyrics and not args.lyrics_file:
+        print("pass --lyrics or --lyrics-file (nothing to sing)", file=sys.stderr)
+        return 2
+
+    try:
+        result = sing_song(
+            midi,
+            lyrics=args.lyrics,
+            lyrics_file=args.lyrics_file,
+            out_path=args.out,
+            instrumental_wav=args.wav,
+            voice=args.voice or DEFAULT_VOICE,
+            device=args.device,
+            vocal_gain_db=args.gain,
+            sample_rate=args.rate,
+            master=not args.no_master,
+            humanize=not args.no_humanize,
+            humanize_seed=args.seed,
+            render_backend=args.backend,
+            stems=args.stems,
+        )
+    except Exception as exc:
+        print(f"sing failed: {exc}", file=sys.stderr)
+        return 1
+
+    _print(result.to_dict(), args.json, title="sung mix")
     for w in result.warnings:
         print(f"warning: {w}", file=sys.stderr)
     return 0
@@ -889,6 +970,28 @@ def build_parser() -> argparse.ArgumentParser:
     _add_common(p)
     p.set_defaults(func=cmd_generate)
 
+    # --- arrange ---------------------------------------------------------- #
+    p = sub.add_parser(
+        "arrange",
+        help="clean a generated MIDI (key, instruments, ranges, balance)",
+        description=(
+            "Detect the key, keep a sensible set of instrument roles, snap "
+            "out-of-key notes, fold ranges and balance velocities."
+        ),
+    )
+    p.add_argument("--midi", required=True, help="input .mid file")
+    p.add_argument("--out", help="output .mid (default: <name>_arranged.mid)")
+    p.add_argument("--max-instruments", type=int, default=6,
+                   help="non-drum instruments to keep (default 6)")
+    p.add_argument("--no-snap", action="store_true", help="do not snap notes to the key")
+    p.add_argument("--no-balance", action="store_true", help="do not rebalance velocities")
+    p.add_argument("--no-fold", action="store_true", help="do not fold ranges by role")
+    p.add_argument("--no-dedupe", action="store_true", help="keep duplicate notes")
+    p.add_argument("--no-sustain", action="store_true",
+                   help="keep the model's short note lengths (more plinky)")
+    _add_common(p)
+    p.set_defaults(func=cmd_arrange)
+
     # --- render ----------------------------------------------------------- #
     p = sub.add_parser(
         "render",
@@ -902,6 +1005,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--soundfont", help="explicit .sf2 path")
     p.add_argument("--rate", type=int, help="sample rate (default 44100)")
     p.add_argument("--gain", type=float, default=0.8, help="output gain 0..1")
+    p.add_argument("--humanize", action="store_true",
+                   help="nudge note timing/velocity before rendering (less mechanical)")
+    p.add_argument("--seed", type=int, default=0, help="humanise seed (default 0)")
     p.add_argument("--backends", action="store_true", help="list backends and exit")
     _add_common(p)
     p.set_defaults(func=cmd_render)
@@ -931,6 +1037,41 @@ def build_parser() -> argparse.ArgumentParser:
                    help="speech model device (cpu or mps; default cpu)")
     _add_common(p)
     p.set_defaults(func=cmd_vocals)
+
+    # --- sing (melody-aware) ---------------------------------------------- #
+    p = sub.add_parser(
+        "sing",
+        help="sing the lyrics on the generated melody, then master the mix",
+        description=(
+            "Extract the lead melody from the MIDI, split the lyrics into "
+            "syllables, assign each syllable to a note, pitch-shape the spoken "
+            "syllable to that note (with vibrato), then EQ/compress/reverb/limit "
+            "the result. This is pitch-shaped TTS singing, not a neural singing "
+            "voice - see docs/07_VOCALS.md."
+        ),
+    )
+    p.add_argument("--midi", required=True, help="the generated .mid (melody + timing)")
+    p.add_argument("--wav", help="use this instrumental instead of rendering the MIDI")
+    p.add_argument("--out", help="output WAV (default: <midi>_sing.wav)")
+    p.add_argument("--lyrics", help="lyric text (Tamil or English)")
+    p.add_argument("--lyrics-file", help="UTF-8 file, one lyric line per line")
+    p.add_argument("--voice", help="transformers VITS TTS repo id (default: Tamil MMS)")
+    p.add_argument("--device", default="cpu", help="speech model device (default cpu)")
+    p.add_argument("--gain", type=float, default=1.5,
+                   help="vocal RMS level in dB relative to the music (default +1.5)")
+    p.add_argument("--rate", type=int, default=44100, help="output sample rate")
+    p.add_argument("--no-master", action="store_true",
+                   help="skip EQ/compression/reverb/limiting")
+    p.add_argument("--no-humanize", action="store_true",
+                   help="render the MIDI exactly as written")
+    p.add_argument("--seed", type=int, default=0, help="humanise seed (default 0)")
+    p.add_argument("--stems", action="store_true",
+                   help="also write <out>_vocals.wav and <out>_instrumental.wav")
+    p.add_argument("--backend", default="auto",
+                   choices=["auto", "fluidsynth", "pyfluidsynth", "numpy"],
+                   help="renderer to use when --wav is not given")
+    _add_common(p)
+    p.set_defaults(func=cmd_sing)
 
     # --- analyze ---------------------------------------------------------- #
     p = sub.add_parser(
