@@ -114,25 +114,39 @@ reference machine — override it if your path differs:
 ```
 
 Training stops at 200 steps (`save_every: 100` writes `best.pt` around step
-100). Expect ~2.5–3 s/step at 1 024 tokens.
+100). On an 8 GB M2 expect roughly **10 s/step** at 1 024 tokens once the
+machine starts swapping, so a 200-step run is a 30–40 minute coffee break.
 
-## 6. Generate the song, with vocals
+## 6. Generate the song, then sing it
+
+Generate a short take (keep `--max-tokens` near the 1 024 the model was trained
+on; longer sequences extrapolate and wander):
 
 ```bash
 .venv/bin/promptmusic generate -c ta_love_test \
-  --prompt "a romantic tamil love song, gentle and emotional" \
+  --prompt "an intimate tamil love ballad, soft voice, acoustic guitar, warm strings" \
   --lyrics-file data/lyrics/ta_love_song.txt \
-  --language ta --duration 60 \
+  --language ta --max-tokens 1024 --no-render \
   --checkpoint outputs/prompt_music_gen/checkpoints/best.pt
-
-.venv/bin/promptmusic vocals \
-  --midi outputs/samples/<song>.mid \
-  --wav  outputs/samples/<song>.wav \
-  --lyrics-file data/lyrics/ta_love_song.txt
 ```
 
-Open the `_vocal.wav`. You will hear the Tamil lyrics as a spoken layer over
-the instrumental (see [07_VOCALS.md](07_VOCALS.md) for why it is not singing).
+Then clean the arrangement (key, instruments, ranges, note lengths) and sing:
+
+```bash
+.venv/bin/promptmusic arrange \
+  --midi outputs/samples/<take>.mid --out /tmp/song.mid
+
+.venv/bin/promptmusic sing \
+  --midi /tmp/song.mid \
+  --lyrics-file data/lyrics/ta_love_song.txt \
+  --out outputs/samples/tamil_love_song.wav --stems
+```
+
+`sing` renders the instrumental, pitch-shifts each syllable onto the melody,
+adds vibrato, and masters the mix. The lyrics follow the tune, but the voice is
+synthetic — it is not a human singer. Read
+[07_VOCALS.md](07_VOCALS.md) for the pipeline, the controls, and the honest
+ceiling.
 
 ## 7. What to try next
 

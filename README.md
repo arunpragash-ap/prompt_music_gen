@@ -2,8 +2,8 @@
 
 **Turn a written description into music.** Give it a prompt in English or
 Tamil, optionally with lyrics, and it generates a multi-track MIDI file and
-renders it to audio. There is also an optional stage that speaks the lyrics
-over the instrumental.
+renders it to audio. An optional stage then **sings the lyrics on the generated
+melody** (pitch-shaped TTS — not a human voice; see the limits below).
 
 ```bash
 promptmusic generate --prompt "a romantic tamil love song, gentle and emotional" \
@@ -33,15 +33,19 @@ Total model: 328 M parameters, of which 51 M are trained. It runs on an
 | Stage | Output |
 |---|---|
 | `generate` | `.mid` (score) + `.wav` (audio) |
-| `vocals` | `.wav` with the lyrics spoken over the music |
+| `arrange` | a cleaned `.mid` (key, roles, ranges, sustained notes) |
+| `sing` | `.wav` with the lyrics sung on the melody, mastered (+ stems) |
+| `vocals` | `.wav` with the lyrics merely spoken over the music |
 | `train` | `checkpoints/best.pt` |
 | `export` | lean `.pt` / TorchScript / ONNX artifacts |
 
 ## Honest limitations
 
-1. **No real singing.** MIDI has no vocal track and no open Tamil
-   singing-voice model exists. The `vocals` stage is a *spoken* layer placed on
-   bar boundaries — the words are audible, but they do not follow the melody.
+1. **No human singing.** MIDI has no vocal track and no open Tamil
+   singing-voice model exists. `sing` pitch-shifts a Tamil TTS voice onto the
+   generated notes (with vibrato and mastering), so the words follow the tune,
+   but it is still a synthetic voice — not a singer. The older `vocals` stage is
+   only a spoken layer. Details and limits: `docs/07_VOCALS.md`.
 2. **The shipped checkpoint is a demo.** 100 training steps on 400 pieces, on a
    memory-constrained laptop. It proves the pipeline; it is not release-quality
    music. Training longer is documented.
@@ -54,14 +58,17 @@ Total model: 328 M parameters, of which 51 M are trained. It runs on an
 ```bash
 uv venv --python 3.12 .venv
 uv pip install -e ".[mac]"
-.venv/bin/python -m pytest -q -m "not slow"      # 200 tests
+.venv/bin/python -m pytest -q -m "not slow"      # 265 tests
 .venv/bin/promptmusic info
 .venv/bin/promptmusic download --source midicaps # 5.5 GB, resumable
 .venv/bin/promptmusic tokenize -c ta_love_test
 .venv/bin/promptmusic train -c ta_love_test
 .venv/bin/promptmusic generate -c ta_love_test \
   --prompt "a romantic tamil love song, gentle and emotional" \
-  --lyrics-file data/lyrics/ta_love_song.txt --duration 60
+  --lyrics-file data/lyrics/ta_love_song.txt --duration 60 --no-render
+.venv/bin/promptmusic arrange --midi outputs/samples/<take>.mid --out /tmp/song.mid
+.venv/bin/promptmusic sing --midi /tmp/song.mid \
+  --lyrics-file data/lyrics/ta_love_song.txt --out outputs/samples/song.wav --stems
 ```
 
 Full walkthrough, including a **no-download** first run, in
@@ -96,7 +103,9 @@ raga-build    Phase 5: synthesise Hindustani raga MIDI
 audit         Phase 6: instrument balance audit
 train         train the model (MPS/CPU aware)
 generate      prompt -> MIDI (+ WAV)
+arrange       clean a generated MIDI (key, roles, sustain)
 render        MIDI -> WAV
+sing          sing lyrics on the melody, then master
 vocals        speak lyrics over an instrumental
 analyze       describe a reference MIDI/audio file
 evaluate      score generated MIDI
@@ -112,7 +121,7 @@ Every command has `--help`. `make help` lists the equivalent shortcuts.
 ```
 configs/     YAML configs (smoke, default, ta_love_test, from_scratch, paper_size)
 src/         the Python package
-tests/       200 tests (fast, no network)
+tests/       265 tests (fast, no network)
 docs/        the documentation above
 scripts/     repo setup + disk report
 data/        raga table, lyrics, processed caches (large parts gitignored)
@@ -131,6 +140,6 @@ commercial use.
 Music generated with prompt_music_gen (Apache-2.0).
 Trained on MidiCaps (CC BY-NC 4.0), derived from the Lakh MIDI Dataset.
 Text encoder: google/mt5-base (Apache-2.0).
-Vocal layer: facebook/mms-tts-tam (CC BY-NC 4.0).
+Vocal layer: facebook/mms-tts-tam (CC BY-NC 4.0), pitch-shaped onto the melody.
 Rendered with fluidsynth + a General MIDI soundfont.
 ```

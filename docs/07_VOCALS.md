@@ -1,124 +1,189 @@
-# 07 — Vocals: putting the lyrics into the audio
+# 07 — Vocals: from spoken lines to melody-aware singing
 
-This page explains a limitation that surprises most people, and the workaround
-this project implements.
+This page explains why a MIDI model has no singer, what this project does about
+it, and — just as importantly — what it still cannot do.
 
 ---
 
-## 1. Why the generated song has no singing (by default)
+## 1. Why the generated song has no singing
 
-The model generates **MIDI**. MIDI is sheet music for a computer:
+The model generates **MIDI**, which is a score, not audio:
 
 ```
-Bar_None Position_0 Instrument_0 Pitch_60 Velocity_80 Duration_1.0.0
+Bar_None Position_0 Program_0 Pitch_60 Velocity_80 Duration_1.0.0
 ```
 
-There is no audio and no voice track. No soundfont can articulate words — the
-closest General MIDI offers is "Choir Aahs", which is a vowel pad, not Tamil.
+There is no voice track and no words. A General MIDI soundfont can play a
+"Choir Aahs" pad, but that is a vowel texture, not Tamil.
 
-So when you pass `--lyrics`, the lyrics are folded into the *prompt text*:
+When you pass `--lyrics`, the text is folded into the prompt:
 
 ```
 "{prompt}\n{Tamil|English} lyrics: {lyrics}"
 ```
 
-The frozen mT5 encoder reads that and steers the **mood and structure** of the
-music. The words influence the music; they are never sung.
+The frozen mT5 encoder reads it and steers the **mood and structure** of the
+music. Unless you run a vocal stage, the words are never heard.
 
-## 2. What the `vocals` stage does
+## 2. Two vocal stages
 
-`src/promptmusic/vocals.py` adds a second pass:
+| Command | What it does | When to use |
+|---|---|---|
+| `promptmusic vocals` | Speaks each line and places it on a bar line (speech, no melody) | quick narration-style demo |
+| `promptmusic sing` | Sings each syllable on a note of the generated melody, then masters the mix | the realistic option in this project |
 
-1. Split the lyric file into lines.
-2. Speak each line with a local Tamil text-to-speech model
-   (`facebook/mms-tts-tam`, VITS, 36 M params, 16 kHz).
-3. Read the MIDI's tempo and time signature to compute bar length.
-4. Place each line on a bar boundary, spread across the song. Lines that would
-   collide are pushed forward instead of overlapping.
-5. Resample speech to the instrumental's sample rate (44.1 kHz) with a
-   polyphase filter, fade the edges to avoid clicks, and mix it under the music
-   at `--gain` dB (default −4 dB).
-6. Rescale only if the mix would clip.
+`sing` is **pitch-shaped TTS**, not a neural singing voice. It is a large step
+up from speech-on-a-beat: the words follow the tune, hold notes, and get
+vibrato. It is still a synthetic voice.
 
-That is an honest **spoken vocal layer**. The words are audible and land on the
-beat, but they do **not** follow the generated melody.
+## 3. The `sing` pipeline
 
-## 3. Usage
+`src/promptmusic/singing.py`:
+
+1. **Syllabify the lyrics.** Tamil is split on vowel signs, virama and
+   independent vowels; English uses a vowel-group heuristic. Each line becomes
+   a list of syllables. Spaces are kept for phrase boundaries.
+2. **Find the melody.** `extract_lead_track()` scores every non-drum track for
+   note count, monophony and register, and picks the lead line. This beats a
+   "skyline" (highest note at each instant), which is too sparse because the
+   model writes chords.
+3. **Quantise and simplify.** `quantize_melody()` snaps onsets to an
+   eighth-note grid at the song's *actual* tempo, merges repeated pitches and
+   joins legato notes up to 1.2 s. `simplify_melody()` removes ornaments a
+   singer would not articulate.
+4. **Segment phrases and allocate lines.** `segment_phrases()` uses rests;
+   `allocate_line_sections()` gives each lyric line its own stretch of the
+   song, in order.
+5. **Place syllables.** If a section has at least 0.8 melody notes per
+   syllable, `plan_line()` sings note-for-note. Otherwise `plan_line_grid()`
+   gives every syllable one rhythmic step inside the section's active runs and
+   takes its pitch from the nearest melody note. This is what stops 13
+   syllables being crushed into a 0.05 s grace note.
+6. **Pitch-shape the speech.** Each syllable is spoken once by the TTS model,
+   then `fit_pitch()` folds the note into ±5.5 semitones of the speaker's own
+   F0 (E3-ish for the Tamil MMS voice) and compresses the interval by 0.7 so
+   the result stays natural. `pitch_shift()` uses a phase vocoder plus
+   resampling; `time_stretch()` uses the same STFT engine.
+7. **Closed-loop correction.** After shifting, `render_line()` measures the
+   syllable's F0 and corrects up to ±4 semitones in at most two passes.
+8. **Human detail.** `vibrato()` adds a delayed 5 Hz oscillation (about 25
+   cents) and a short fade avoids clicks.
+9. **Mix and master.** `master_mix()` in `src/promptmusic/master.py` normalises
+   the instrumental's active RMS to 0.09, sets the vocal to
+   `instrumental × 10^(gain/20)` (default **+1.5 dB**), high-passes the vocal,
+   adds presence and compression, widens the music, ducks it slightly under
+   the voice, adds a procedural reverb, and limits peaks (never boosts quiet
+   material) to −1 dBFS. `--stems` also writes the vocal and instrumental.
+
+## 4. Clean the arrangement first
+
+Raw model output is valid MIDI but a poor arrangement: 10–18 instruments, a
+bass above the melody, notes outside the key, every note 0.12 s long.
+`promptmusic arrange` fixes that before you render:
 
 ```bash
-promptmusic vocals \
-  --midi outputs/samples/<song>.mid \
-  --wav  outputs/samples/<song>.wav \
-  --lyrics-file data/lyrics/ta_love_song.txt
-# -> outputs/samples/<song>_vocal.wav
+promptmusic arrange --midi take.mid --out take_arranged.mid
 ```
 
-Options:
+It detects the key (Krumhansl-Schmuckler), keeps the lead/bass/pad/drums plus a
+few supporting parts (default six non-drum tracks), snaps out-of-key notes,
+folds each role into a sensible octave range, balances velocities, removes
+duplicate notes, and **sustains** short notes until the next onset (a pad chord
+can ring for six seconds). The report prints the key, the tracks kept and
+removed, and how many notes were changed.
+
+## 5. Usage
+
+```bash
+# 1. generate (26-60 s of music)
+promptmusic generate \
+  -p "an intimate tamil love ballad, soft voice, acoustic guitar, strings" \
+  --lyrics-file data/lyrics/ta_love_song.txt --language ta \
+  --max-tokens 1024 --temperature 0.95 --top-p 0.92 \
+  --out outputs/samples --no-render
+
+# 2. make the MIDI musical
+promptmusic arrange --midi outputs/samples/<take>.mid --out /tmp/take.mid
+
+# 3. render + sing + master in one step
+promptmusic sing --midi /tmp/take.mid \
+  --lyrics-file data/lyrics/ta_love_song.txt \
+  --out outputs/samples/tamil_love_song.wav --stems
+```
+
+If you already rendered a WAV, pass `--wav`; `sing` will use it instead of
+rendering again. Otherwise it humanises the MIDI and renders with fluidsynth.
 
 | Flag | Default | Meaning |
 |---|---|---|
-| `--lyrics` / `--lyrics-file` | — | one line per phrase, UTF-8 |
-| `--voice` | `facebook/mms-tts-tam` | any `transformers` VITS TTS repo |
-| `--stride-bars` | spread evenly | bars between line starts |
-| `--gain` | `-4` dB | vocal level relative to the music |
+| `--midi` | required | melody + timing |
+| `--wav` | render the MIDI | use an existing instrumental |
+| `--lyrics` / `--lyrics-file` | — | UTF-8, one line per phrase |
+| `--out` | `<midi>_sing.wav` | final mix |
+| `--voice` | `facebook/mms-tts-tam` | any `transformers` VITS repo |
+| `--gain` | `+1.5` dB | vocal RMS relative to the music |
 | `--device` | `cpu` | `cpu` or `mps` for the speech model |
-| `--out` | `<wav>_vocal.wav` | output path |
+| `--rate` | `44100` | output sample rate |
+| `--stems` | off | also write `_vocals.wav` / `_instrumental.wav` |
+| `--no-master` | off | skip EQ/compression/reverb/limiting |
+| `--no-humanize` | off | render notes exactly as written |
+| `--seed` | `0` | humanisation seed |
+| `--backend` | `auto` | renderer when `--wav` is absent |
 
-The demo run: 8 Tamil lines, 81.6 s, lines every 10 s, speech energy present at
-every placement (mix RMS rose from 0.060 to 0.079).
-
-## 4. Quality expectations
+## 6. Quality expectations (honest)
 
 | Aspect | Reality |
 |---|---|
-| Words intelligible? | yes, as speech |
-| On the beat? | yes — lines start on bar boundaries |
-| Melody-matched? | **no** — pitch follows speech prosody |
-| Voice naturalness? | decent MMS-TTS quality; robotic on long lines |
-| Language | Tamil (default voice); any MMS language via `--voice` |
-| Singing? | **no** — this is not singing voice synthesis |
+| Follows the tune? | **yes** — each syllable is pitch-shifted to a melody note |
+| Holds notes / vibrato? | yes, with synthetic vibrato |
+| Words intelligible? | mostly; pitch shifting smears consonants |
+| Sounds like a human singer? | **no** — it is a TTS voice with a melody imposed |
+| Tamil? | yes, with the MMS Tamil voice |
+| Voice naturalness? | decent for short syllables; artefacts on large shifts |
+| Commercial use? | no with the default voice (CC-BY-NC) |
 
-If a line is longer than its slot, the next line is pushed later; if the song
-ends first, the tail is truncated and a warning is printed. Instrumentals
-shorter than a few seconds are not useful for this stage.
+The demo (`data/lyrics/ta_love_song.txt`, 8 lines, 108 syllables) produces a
+≈50 s track with 36 melodic targets and 8 phrases; the vocal sits about 4 dB
+above the instrumental and the mix peaks at −1 dBFS.
 
-## 5. Licence warning
+## 7. Why not real Tamil singing?
 
-`facebook/mms-tts-tam` is **CC-BY-NC 4.0 — non-commercial only**. Swap
-`--voice` for a permissively licensed VITS model before any commercial use.
-See [05_MODELS_AND_LICENSES.md](05_MODELS_AND_LICENSES.md).
+True singing-voice synthesis (SVS) needs:
 
-## 6. The upgrade path to real singing
+1. a model that maps **phonemes + note pitches + durations** to a waveform
+   (DiffSinger, VISinger, Sinsy-class);
+2. a **Tamil grapheme-to-phoneme** front end and a Tamil SVS checkpoint;
+3. a corpus of **sung** Tamil with aligned notes.
 
-True singing voice synthesis (SVS) needs three things this project does not
-have:
+Open SVS voicebanks exist mainly for Chinese, Japanese and English; there is no
+public Tamil voicebank at useful scale. The realistic paths are:
 
-1. A model that maps **phonemes + note pitches + durations** to a waveform
-   (DiffSinger, VISinger, Sinsy-class).
-2. A **Tamil phonemiser** (grapheme-to-phoneme) and a Tamil SVS checkpoint.
-3. A corpus of **sung** Tamil with aligned notes — not publicly available at
-   useful scale.
+* **Pitch-shaped TTS** — what `sing` does; good enough to hear the tune and
+  words together, not a singer.
+* **Fine-tune an open SVS model** on sung Tamil you record or license — the
+  only route to a convincing result.
+* **A hosted text-to-music service** — if the goal is a finished song rather
+  than a local learning project.
 
-Practical options, in order of effort:
+The stage is modular (`sing_song()` returns the stems), so a real SVS backend
+can replace the TTS synthesis step without touching the music model.
 
-* **Pitch-shaped speech** (research project): estimate the speech F0, snap it
-  to the generated melody's scale, time-stretch each syllable to the nearest
-  note. Convincing enough for demos; still not true singing.
-* **Fine-tune an open SVS model** on a small sung-Tamil dataset you record or
-  license. This is the realistic route to a real singer.
-* **Use a hosted text-to-music service** if the goal is a finished song rather
-  than a learning project.
-
-The project deliberately does not pretend the vocal layer is SVS. The stage is
-modular, so a future `vocals` backend can implement the real thing without
-touching the music model.
-
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `voice=None ... not a valid model identifier` | older build passed `None` | fixed; `--voice` now falls back to the default |
-| Voice silent | MIDI tempo unreadable | tempo sanitisation now prevents 0 BPM; check the MIDI with `promptmusic evaluate` |
-| Lines overlap | slots shorter than speech | pass `--stride-bars` or shorten lines |
+| `pass --lyrics or --lyrics-file` | nothing to sing | pass the text |
+| Vocal is silent | the MIDI has no melodic notes | run `promptmusic arrange` first, or generate a longer take |
+| Words are rushed | too many syllables for the section | shorten lines or generate more bars |
+| Big pitch jumps | wide melody range | `fit_pitch` folds by octave; reduce `--gain` if it is harsh |
+| Buzzy consonants | large pitch shift | expected; use shorter syllables or a closer voice |
+| Vocals too loud/quiet | gain staging | `--gain 0` for equal active RMS, negative to sit back |
 | `ModuleNotFoundError: transformers` | wrong interpreter | use `.venv/bin/promptmusic` |
-| First run slow | 139 MB model download | one-time; cached in `.hf_cache` |
+| First run slow | ~80 MB TTS download | one-time; cached |
+
+## 9. Licence warning
+
+`facebook/mms-tts-tam` is **CC-BY-NC 4.0 — non-commercial only**. The code is
+Apache-2.0, the model weights are not. Swap `--voice` for a permissively
+licensed VITS model before any commercial use. See
+[05_MODELS_AND_LICENSES.md](05_MODELS_AND_LICENSES.md).
